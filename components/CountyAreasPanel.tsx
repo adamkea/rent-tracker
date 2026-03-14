@@ -1,5 +1,8 @@
 "use client";
 
+import Link from "next/link";
+import { slugify } from "@/lib/data-helpers";
+
 const COLOUR_SCALE = [
   "#d1fae5", // emerald-100
   "#6ee7b7", // emerald-300
@@ -51,9 +54,10 @@ export default function CountyAreasPanel({ county, areas }: CountyAreasPanelProp
           const bg = getRentColour(area.averageRent, min, max);
           const fg = textColour(bg);
           return (
-            <div
+            <Link
               key={area.location}
-              className="rounded-lg p-3"
+              href={`/area/${slugify(area.location)}`}
+              className="rounded-lg p-3 block transition-opacity hover:opacity-80"
               style={{ backgroundColor: bg }}
             >
               <p
@@ -67,7 +71,7 @@ export default function CountyAreasPanel({ county, areas }: CountyAreasPanelProp
                   ? `€${area.averageRent.toLocaleString("en-IE")}/mo`
                   : "No data"}
               </p>
-            </div>
+            </Link>
           );
         })}
       </div>
