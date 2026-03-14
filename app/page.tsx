@@ -44,7 +44,9 @@ async function getStats() {
       mostExpensive,
       leastExpensive,
       latestYear,
-      records,
+      // Only pass the latest year's records to the client — passing the full
+      // multi-year dataset inflates the RSC/ISR payload beyond Vercel's 19 MB limit.
+      records: filterRecords(records, { year: latestYear }),
     };
   } catch {
     return null;
