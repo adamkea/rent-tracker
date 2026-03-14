@@ -21,6 +21,7 @@ interface CountyRent {
 
 interface IrelandMapProps {
   data: CountyRent[];
+  selectedCounty: string | null;
 }
 
 function getRentColour(rent: number | null, min: number, max: number): string {
@@ -30,10 +31,7 @@ function getRentColour(rent: number | null, min: number, max: number): string {
   return COLOUR_SCALE[idx];
 }
 
-// Placeholder SVG map of Ireland showing counties as labelled boxes.
-// Replace this component body with react-simple-maps + TopoJSON once the
-// GeoJSON/TopoJSON file is sourced from OSi open data.
-export default function IrelandMap({ data }: IrelandMapProps) {
+export default function IrelandMap({ data, selectedCounty }: IrelandMapProps) {
   const router = useRouter();
 
   const rents = data.map((d) => d.averageRent).filter((r): r is number => r !== null);
@@ -46,50 +44,35 @@ export default function IrelandMap({ data }: IrelandMapProps) {
 
   return (
     <div className="w-full h-full flex flex-col gap-4">
-      {/* Map placeholder — swap this div for <ComposableMap> once TopoJSON is ready */}
       <div className="relative w-full aspect-[3/4] bg-gray-100 rounded-xl border border-dashed border-gray-300 flex items-center justify-center overflow-hidden">
-        <div className="text-center px-6">
-          <p className="text-gray-400 text-sm font-medium mb-1">
-            Interactive county map
-          </p>
-          <p className="text-gray-400 text-xs">
-            Add Irish county TopoJSON from{" "}
-            <a
-              href="https://data-osi.opendata.arcgis.com/search?tags=boundaries"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline hover:text-emerald-600"
-            >
-              OSi Open Data
-            </a>{" "}
-            to enable the choropleth map.
-          </p>
-        </div>
-
-        {/* County legend grid — functional, clickable even without TopoJSON */}
         <div className="absolute inset-0 overflow-auto p-4">
           <div className="grid grid-cols-4 sm:grid-cols-5 gap-1.5">
-            {data.map((d) => (
-              <button
-                key={d.county}
-                onClick={() => handleCountyClick(d.county)}
-                title={d.averageRent ? `€${d.averageRent.toLocaleString("en-IE")}/mo` : "No data"}
-                className="flex flex-col items-center justify-center p-1.5 rounded text-xs font-medium transition-transform hover:scale-105 hover:shadow-md cursor-pointer"
-                style={{
-                  backgroundColor: getRentColour(d.averageRent, min, max),
-                  color: d.averageRent && d.averageRent > (min + (max - min) * 0.5) ? "white" : "#1f2937",
-                }}
-              >
-                <span className="truncate w-full text-center leading-tight">
-                  {d.county}
-                </span>
-                {d.averageRent && (
-                  <span className="opacity-80 text-[10px]">
-                    €{Math.round(d.averageRent / 100) * 100}
+            {data.map((d) => {
+              const isSelected = selectedCounty === d.county;
+              return (
+                <button
+                  key={d.county}
+                  onClick={() => handleCountyClick(d.county)}
+                  title={d.averageRent ? `€${d.averageRent.toLocaleString("en-IE")}/mo` : "No data"}
+                  className={`flex flex-col items-center justify-center p-1.5 rounded text-xs font-medium transition-transform hover:scale-105 hover:shadow-md cursor-pointer ${
+                    isSelected ? "ring-2 ring-offset-1 ring-gray-800 scale-105 shadow-lg" : ""
+                  }`}
+                  style={{
+                    backgroundColor: getRentColour(d.averageRent, min, max),
+                    color: d.averageRent && d.averageRent > (min + (max - min) * 0.5) ? "white" : "#1f2937",
+                  }}
+                >
+                  <span className="truncate w-full text-center leading-tight">
+                    {d.county}
                   </span>
-                )}
-              </button>
-            ))}
+                  {d.averageRent && (
+                    <span className="opacity-80 text-[10px]">
+                      €{Math.round(d.averageRent / 100) * 100}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>
