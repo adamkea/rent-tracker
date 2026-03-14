@@ -37,7 +37,6 @@ export default function MapSection({ records, latestYear }: MapSectionProps) {
       if (!byCounty[c]) byCounty[c] = [];
       byCounty[c].push(r.averageRent);
     }
-
     return Object.entries(byCounty)
       .map(([c, rents]) => ({
         county: c,
@@ -46,35 +45,33 @@ export default function MapSection({ records, latestYear }: MapSectionProps) {
       .sort((a, b) => a.county.localeCompare(b.county));
   }, [filtered]);
 
-  // Per-location breakdown for the selected county (or Dublin for geo map colouring)
-  const selectedCountyAreas = useMemo(() => {
-    // We always compute Dublin areas for the geo map admin-area colouring.
-    // We also compute areas for whichever county the user has selected.
-    const targetCounties = new Set<string>(["Dublin"]);
-    if (county !== "all") targetCounties.add(county);
-
-    const byLocationByCounty: Record<string, Record<string, number[]>> = {};
-
+  // Per-location averages for EVERY area (used for markers on the geo map)
+  const allAreaData = useMemo(() => {
+    const byLocation: Record<string, number[]> = {};
     for (const r of filtered) {
       if (r.averageRent === null) continue;
-      const c = extractCounty(r.location);
-      if (!targetCounties.has(c)) continue;
-      if (!byLocationByCounty[c]) byLocationByCounty[c] = {};
-      if (!byLocationByCounty[c][r.location]) byLocationByCounty[c][r.location] = [];
-      byLocationByCounty[c][r.location].push(r.averageRent);
+      if (!byLocation[r.location]) byLocation[r.location] = [];
+      byLocation[r.location].push(r.averageRent);
     }
+    return Object.entries(byLocation).map(([loc, rents]) => ({
+      location: loc,
+      averageRent: Math.round(rents.reduce((a, b) => a + b, 0) / rents.length),
+    }));
+  }, [filtered]);
 
-    const result: Record<string, { location: string; averageRent: number | null }[]> = {};
-    for (const [c, byLoc] of Object.entries(byLocationByCounty)) {
-      result[c] = Object.entries(byLoc)
-        .map(([loc, rents]) => ({
-          location: loc,
-          averageRent: Math.round(rents.reduce((a, b) => a + b, 0) / rents.length),
-        }))
-        .sort((a, b) => a.location.localeCompare(b.location));
-    }
-    return result;
-  }, [filtered, county]);
+  // Dublin area data for coloring the 4 Dublin admin areas on the geo map
+  const dublinAreaData = useMemo(
+    () => allAreaData.filter((a) => extractCounty(a.location) === "Dublin"),
+    [allAreaData]
+  );
+
+  // Areas for the selected county (for the panel below the map)
+  const panelAreas = useMemo(() => {
+    if (county === "all") return [];
+    return allAreaData
+      .filter((a) => extractCounty(a.location) === county)
+      .sort((a, b) => a.location.localeCompare(b.location));
+  }, [allAreaData, county]);
 
   const counties = useMemo(() => countyData.map((d) => d.county), [countyData]);
 
@@ -83,11 +80,12 @@ export default function MapSection({ records, latestYear }: MapSectionProps) {
     return countyData.filter((d) => d.county === county);
   }, [countyData, county]);
 
-  // Dublin area data for geo map (always computed so 4 admin areas get individual colours)
-  const dublinAreaData = selectedCountyAreas["Dublin"] ?? null;
+  // On the geo map, filter visible markers to the selected county (or show all)
+  const visibleAreaData = useMemo(() => {
+    if (county === "all") return allAreaData;
+    return allAreaData.filter((a) => extractCounty(a.location) === county);
+  }, [allAreaData, county]);
 
-  // Areas to show in the panel below the map (only when a specific county is selected)
-  const panelAreas = county !== "all" ? (selectedCountyAreas[county] ?? []) : [];
   const showPanel = county !== "all" && panelAreas.length > 0;
 
   return (
@@ -114,6 +112,7 @@ export default function MapSection({ records, latestYear }: MapSectionProps) {
             data={countyData}
             selectedCounty={county === "all" ? null : county}
             dublinAreaData={dublinAreaData}
+            allAreaData={visibleAreaData}
           />
           {showPanel && <CountyAreasPanel county={county} areas={panelAreas} />}
         </>

@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { ComposableMap, Geographies, Geography, ZoomableGroup } from "react-simple-maps";
+import { ComposableMap, Geographies, Geography, Marker, ZoomableGroup } from "react-simple-maps";
 import { useRouter } from "next/navigation";
 import { slugify } from "@/lib/data-helpers";
+import { getAreaCoords } from "@/lib/area-coords";
 
 // Maps GeoJSON feature names → CSO county names used in our data
 const GEO_TO_CSO: Record<string, string> = {
@@ -52,7 +53,6 @@ const DUBLIN_GEO_AREAS = new Set([
 ]);
 
 // Maps Dublin postal district numbers → GeoJSON admin area names
-// Based on approximate official boundaries
 const DUBLIN_DISTRICT_TO_GEO: Record<string, string> = {
   "1": "Dublin City",
   "2": "Dublin City",
@@ -78,21 +78,15 @@ const DUBLIN_DISTRICT_TO_GEO: Record<string, string> = {
   "24": "South Dublin",
 };
 
-/** Extract Dublin postal district number (e.g. "4", "6W") from a location string */
 function extractDublinDistrict(location: string): string | null {
   const match = location.match(/Dublin\s+(\d+[A-Za-z]*)(?:\s*$|,)/i);
   return match ? match[1].toUpperCase() : null;
 }
 
-/**
- * Given per-area Dublin data, compute average rent for each of the 4
- * Dublin GeoJSON admin areas (Dublin City, South Dublin, Fingal, DLR).
- */
 function computeDublinAdminRents(
   dublinAreaData: { location: string; averageRent: number | null }[]
 ): Record<string, number> {
   const byAdmin: Record<string, number[]> = {};
-
   for (const area of dublinAreaData) {
     if (area.averageRent === null) continue;
     const district = extractDublinDistrict(area.location);
@@ -102,7 +96,6 @@ function computeDublinAdminRents(
     if (!byAdmin[geoArea]) byAdmin[geoArea] = [];
     byAdmin[geoArea].push(area.averageRent);
   }
-
   const result: Record<string, number> = {};
   for (const [name, rents] of Object.entries(byAdmin)) {
     result[name] = Math.round(rents.reduce((a, b) => a + b, 0) / rents.length);
@@ -125,10 +118,16 @@ interface CountyRent {
   averageRent: number | null;
 }
 
+interface AreaRent {
+  location: string;
+  averageRent: number | null;
+}
+
 interface IrelandGeoMapProps {
   data: CountyRent[];
   selectedCounty: string | null;
-  dublinAreaData?: { location: string; averageRent: number | null }[] | null;
+  dublinAreaData?: AreaRent[] | null;
+  allAreaData?: AreaRent[] | null;
 }
 
 function getRentColour(rent: number | null, min: number, max: number): string {
@@ -138,26 +137,45 @@ function getRentColour(rent: number | null, min: number, max: number): string {
   return COLOUR_SCALE[idx];
 }
 
-export default function IrelandGeoMap({ data, selectedCounty, dublinAreaData }: IrelandGeoMapProps) {
+export default function IrelandGeoMap({
+  data,
+  selectedCounty,
+  dublinAreaData,
+  allAreaData,
+}: IrelandGeoMapProps) {
   const router = useRouter();
   const [tooltip, setTooltip] = useState<{ name: string; rent: number | null } | null>(null);
 
   const rentByCounty = Object.fromEntries(data.map((d) => [d.county, d.averageRent]));
 
-  // If we have Dublin area data, compute per-admin-area averages
-  const dublinAdminRents = dublinAreaData && dublinAreaData.length > 0
-    ? computeDublinAdminRents(dublinAreaData)
-    : null;
+  // Per-admin-area rents for the 4 Dublin regions
+  const dublinAdminRents =
+    dublinAreaData && dublinAreaData.length > 0
+      ? computeDublinAdminRents(dublinAreaData)
+      : null;
 
-  // Build the full rent range including Dublin admin area rents (for a consistent colour scale)
+  // Build full rent range for a consistent colour scale
   const allRents: number[] = data
     .map((d) => d.averageRent)
     .filter((r): r is number => r !== null);
-  if (dublinAdminRents) {
-    allRents.push(...Object.values(dublinAdminRents));
+  if (dublinAdminRents) allRents.push(...Object.values(dublinAdminRents));
+  if (allAreaData) {
+    allRents.push(
+      ...allAreaData.map((a) => a.averageRent).filter((r): r is number => r !== null)
+    );
   }
   const min = allRents.length > 0 ? Math.min(...allRents) : 0;
   const max = allRents.length > 0 ? Math.max(...allRents) : 1;
+
+  // Build markers from allAreaData (areas that have known coordinates)
+  const markers = (allAreaData ?? [])
+    .filter((a) => a.averageRent !== null)
+    .map((a) => {
+      const coords = getAreaCoords(a.location);
+      if (!coords) return null;
+      return { location: a.location, averageRent: a.averageRent!, coords };
+    })
+    .filter((m): m is { location: string; averageRent: number; coords: [number, number] } => m !== null);
 
   return (
     <div className="w-full flex flex-col gap-4">
@@ -183,13 +201,13 @@ export default function IrelandGeoMap({ data, selectedCounty, dublinAreaData }: 
           style={{ width: "100%", height: "auto" }}
         >
           <ZoomableGroup>
+            {/* County / admin-area fill layer */}
             <Geographies geography="/ireland-counties.geojson">
               {({ geographies }) =>
                 geographies.map((geo) => {
                   const geoName: string = geo.properties.name;
                   const csoName = GEO_TO_CSO[geoName] ?? geoName;
 
-                  // For Dublin admin areas, use per-area rents when available
                   const isDublinArea = DUBLIN_GEO_AREAS.has(geoName);
                   const rent =
                     isDublinArea && dublinAdminRents
@@ -197,7 +215,6 @@ export default function IrelandGeoMap({ data, selectedCounty, dublinAreaData }: 
                       : (rentByCounty[csoName] ?? null);
 
                   const isSelected = selectedCounty === csoName;
-                  // Show the admin area name in tooltip when Dublin is broken down
                   const tooltipName =
                     isDublinArea && dublinAdminRents ? geoName : csoName;
 
@@ -215,7 +232,9 @@ export default function IrelandGeoMap({ data, selectedCounty, dublinAreaData }: 
                           strokeWidth: isSelected ? 2 : 0.5,
                           outline: "none",
                           cursor: "pointer",
-                          filter: isSelected ? "drop-shadow(0 0 4px rgba(0,0,0,0.4))" : "none",
+                          filter: isSelected
+                            ? "drop-shadow(0 0 4px rgba(0,0,0,0.4))"
+                            : "none",
                         },
                         hover: {
                           fill: getRentColour(rent, min, max),
@@ -237,6 +256,24 @@ export default function IrelandGeoMap({ data, selectedCounty, dublinAreaData }: 
                 })
               }
             </Geographies>
+
+            {/* Area markers — one dot per CSO location with known coordinates */}
+            {markers.map((m) => (
+              <Marker
+                key={m.location}
+                coordinates={m.coords}
+                onMouseEnter={() => setTooltip({ name: m.location, rent: m.averageRent })}
+                onMouseLeave={() => setTooltip(null)}
+              >
+                <circle
+                  r={4}
+                  fill={getRentColour(m.averageRent, min, max)}
+                  stroke="#ffffff"
+                  strokeWidth={1}
+                  style={{ cursor: "default" }}
+                />
+              </Marker>
+            ))}
           </ZoomableGroup>
         </ComposableMap>
       </div>
@@ -253,9 +290,7 @@ export default function IrelandGeoMap({ data, selectedCounty, dublinAreaData }: 
       </div>
 
       <p className="text-xs text-gray-400 text-center">
-        {dublinAdminRents
-          ? "Dublin is broken down by administrative area. Click a region to view rent trends. Scroll to zoom, drag to pan."
-          : "Click a county to view detailed rent trends. Scroll to zoom, drag to pan."}
+        Dots show individual rental areas. Hover for price. Scroll to zoom, drag to pan.
       </p>
     </div>
   );
