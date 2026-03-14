@@ -1,117 +1,37 @@
 "use client";
 
-import { useState } from "react";
-import { ComposableMap, Geographies, Geography, Marker, ZoomableGroup } from "react-simple-maps";
+import { useEffect, useState } from "react";
+import { geoMercator, geoPath } from "d3-geo";
+import { Delaunay } from "d3-delaunay";
 import { useRouter } from "next/navigation";
 import { slugify } from "@/lib/data-helpers";
 import { getAreaCoords } from "@/lib/area-coords";
 
-// Maps GeoJSON feature names → CSO county names used in our data
-const GEO_TO_CSO: Record<string, string> = {
-  "Limerick City": "Limerick",
-  "Limerick County": "Limerick",
-  "North Tipperary": "Tipperary",
-  "South Tipperary": "Tipperary",
-  "Waterford City": "Waterford",
-  "Waterford County": "Waterford",
-  "Galway City": "Galway",
-  "Galway County": "Galway",
-  "Leitrim County": "Leitrim",
-  "Mayo County": "Mayo",
-  "Roscommon County": "Roscommon",
-  "Sligo County": "Sligo",
-  "Cavan County": "Cavan",
-  "Donegal County": "Donegal",
-  "Monaghan County": "Monaghan",
-  "Carlow County": "Carlow",
-  "Dublin City": "Dublin",
-  "South Dublin": "Dublin",
-  "Fingal": "Dublin",
-  "Dún Laoghaire-Rathdown": "Dublin",
-  "Kildare County": "Kildare",
-  "Kilkenny County": "Kilkenny",
-  "Laois County": "Laois",
-  "Longford County": "Longford",
-  "Louth County": "Louth",
-  "Meath County": "Meath",
-  "Offaly County": "Offaly",
-  "Westmeath County": "Westmeath",
-  "Wexford County": "Wexford",
-  "Wicklow County": "Wicklow",
-  "Clare County": "Clare",
-  "Cork City": "Cork",
-  "Cork County": "Cork",
-  "Kerry County": "Kerry",
-};
+const WIDTH = 500;
+const HEIGHT = 580;
 
-// The 4 Dublin GeoJSON area names
-const DUBLIN_GEO_AREAS = new Set([
-  "Dublin City",
-  "South Dublin",
-  "Fingal",
-  "Dún Laoghaire-Rathdown",
-]);
+const projection = geoMercator()
+  .center([-8, 53.4])
+  .scale(3200)
+  .translate([WIDTH / 2, HEIGHT / 2]);
 
-// Maps Dublin postal district numbers → GeoJSON admin area names
-const DUBLIN_DISTRICT_TO_GEO: Record<string, string> = {
-  "1": "Dublin City",
-  "2": "Dublin City",
-  "3": "Dublin City",
-  "4": "Dublin City",
-  "5": "Fingal",
-  "6": "Dublin City",
-  "6W": "Dún Laoghaire-Rathdown",
-  "7": "Dublin City",
-  "8": "Dublin City",
-  "9": "Dublin City",
-  "10": "South Dublin",
-  "11": "Fingal",
-  "12": "South Dublin",
-  "13": "Fingal",
-  "14": "Dún Laoghaire-Rathdown",
-  "15": "Fingal",
-  "16": "Dún Laoghaire-Rathdown",
-  "17": "Fingal",
-  "18": "Dún Laoghaire-Rathdown",
-  "20": "South Dublin",
-  "22": "South Dublin",
-  "24": "South Dublin",
-};
-
-function extractDublinDistrict(location: string): string | null {
-  const match = location.match(/Dublin\s+(\d+[A-Za-z]*)(?:\s*$|,)/i);
-  return match ? match[1].toUpperCase() : null;
-}
-
-function computeDublinAdminRents(
-  dublinAreaData: { location: string; averageRent: number | null }[]
-): Record<string, number> {
-  const byAdmin: Record<string, number[]> = {};
-  for (const area of dublinAreaData) {
-    if (area.averageRent === null) continue;
-    const district = extractDublinDistrict(area.location);
-    const geoArea = district
-      ? (DUBLIN_DISTRICT_TO_GEO[district] ?? "Dublin City")
-      : "Dublin City";
-    if (!byAdmin[geoArea]) byAdmin[geoArea] = [];
-    byAdmin[geoArea].push(area.averageRent);
-  }
-  const result: Record<string, number> = {};
-  for (const [name, rents] of Object.entries(byAdmin)) {
-    result[name] = Math.round(rents.reduce((a, b) => a + b, 0) / rents.length);
-  }
-  return result;
-}
+const pathGen = geoPath(projection);
 
 const COLOUR_SCALE = [
-  "#d1fae5", // emerald-100
-  "#6ee7b7", // emerald-300
-  "#34d399", // emerald-400
-  "#10b981", // emerald-500
-  "#059669", // emerald-600
-  "#047857", // emerald-700
-  "#065f46", // emerald-800
+  "#d1fae5",
+  "#6ee7b7",
+  "#34d399",
+  "#10b981",
+  "#059669",
+  "#047857",
+  "#065f46",
 ];
+
+function getRentColour(rent: number, min: number, max: number): string {
+  const ratio = max === min ? 0.5 : Math.min((rent - min) / (max - min), 1);
+  const idx = Math.floor(ratio * (COLOUR_SCALE.length - 1));
+  return COLOUR_SCALE[idx];
+}
 
 interface CountyRent {
   county: string;
@@ -130,52 +50,50 @@ interface IrelandGeoMapProps {
   allAreaData?: AreaRent[] | null;
 }
 
-function getRentColour(rent: number | null, min: number, max: number): string {
-  if (rent === null) return "#e5e7eb";
-  const ratio = max === min ? 0.5 : Math.min((rent - min) / (max - min), 1);
-  const idx = Math.floor(ratio * (COLOUR_SCALE.length - 1));
-  return COLOUR_SCALE[idx];
-}
-
-export default function IrelandGeoMap({
-  data,
-  selectedCounty,
-  dublinAreaData,
-  allAreaData,
-}: IrelandGeoMapProps) {
+export default function IrelandGeoMap({ allAreaData }: IrelandGeoMapProps) {
   const router = useRouter();
-  const [tooltip, setTooltip] = useState<{ name: string; rent: number | null } | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [geoFeatures, setGeoFeatures] = useState<any[]>([]);
+  const [tooltip, setTooltip] = useState<{
+    name: string;
+    rent: number | null;
+    x: number;
+    y: number;
+  } | null>(null);
 
-  const rentByCounty = Object.fromEntries(data.map((d) => [d.county, d.averageRent]));
+  useEffect(() => {
+    fetch("/ireland-counties.geojson")
+      .then((r) => r.json())
+      .then((d) => setGeoFeatures(d.features));
+  }, []);
 
-  // Per-admin-area rents for the 4 Dublin regions
-  const dublinAdminRents =
-    dublinAreaData && dublinAreaData.length > 0
-      ? computeDublinAdminRents(dublinAreaData)
-      : null;
-
-  // Build full rent range for a consistent colour scale
-  const allRents: number[] = data
-    .map((d) => d.averageRent)
-    .filter((r): r is number => r !== null);
-  if (dublinAdminRents) allRents.push(...Object.values(dublinAdminRents));
-  if (allAreaData) {
-    allRents.push(
-      ...allAreaData.map((a) => a.averageRent).filter((r): r is number => r !== null)
-    );
-  }
-  const min = allRents.length > 0 ? Math.min(...allRents) : 0;
-  const max = allRents.length > 0 ? Math.max(...allRents) : 1;
-
-  // Build markers from allAreaData (areas that have known coordinates)
+  // Build markers: areas that have both rent data and known coordinates
   const markers = (allAreaData ?? [])
     .filter((a) => a.averageRent !== null)
-    .map((a) => {
+    .flatMap((a) => {
       const coords = getAreaCoords(a.location);
-      if (!coords) return null;
-      return { location: a.location, averageRent: a.averageRent!, coords };
-    })
-    .filter((m): m is { location: string; averageRent: number; coords: [number, number] } => m !== null);
+      if (!coords) return [];
+      const xy = projection(coords);
+      if (!xy) return [];
+      return [{ location: a.location, averageRent: a.averageRent as number, xy: xy as [number, number] }];
+    });
+
+  const rents = markers.map((m) => m.averageRent);
+  const min = rents.length ? Math.min(...rents) : 0;
+  const max = rents.length ? Math.max(...rents) : 1;
+
+  // Voronoi tessellation in screen space
+  const voronoiPaths: string[] = [];
+  if (markers.length >= 3) {
+    const delaunay = Delaunay.from(markers.map((m) => m.xy));
+    const voronoi = delaunay.voronoi([0, 0, WIDTH, HEIGHT]);
+    for (let i = 0; i < markers.length; i++) {
+      voronoiPaths.push(voronoi.renderCell(i));
+    }
+  }
+
+  // Ireland outline paths for clipPath + border
+  const irelandPaths = geoFeatures.map((f) => pathGen(f) ?? "");
 
   return (
     <div className="w-full flex flex-col gap-4">
@@ -185,97 +103,74 @@ export default function IrelandGeoMap({
           <div className="absolute top-3 left-3 z-10 bg-white border border-gray-200 rounded-lg px-3 py-2 shadow-md text-sm pointer-events-none">
             <p className="font-semibold text-gray-800">{tooltip.name}</p>
             <p className="text-gray-500">
-              {tooltip.rent ? `€${tooltip.rent.toLocaleString("en-IE")}/mo avg` : "No data"}
+              {tooltip.rent
+                ? `€${tooltip.rent.toLocaleString("en-IE")}/mo avg`
+                : "No data"}
             </p>
+            <p className="text-emerald-600 text-xs mt-0.5">Click for yearly trends →</p>
           </div>
         )}
 
-        <ComposableMap
-          projection="geoMercator"
-          projectionConfig={{
-            center: [-8, 53.4],
-            scale: 3200,
-          }}
-          width={500}
-          height={580}
-          style={{ width: "100%", height: "auto" }}
+        <svg
+          viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+          style={{ width: "100%", height: "auto", display: "block" }}
         >
-          <ZoomableGroup>
-            {/* County / admin-area fill layer */}
-            <Geographies geography="/ireland-counties.geojson">
-              {({ geographies }) =>
-                geographies.map((geo) => {
-                  const geoName: string = geo.properties.name;
-                  const csoName = GEO_TO_CSO[geoName] ?? geoName;
+          <defs>
+            {/* Clip Voronoi cells to Ireland's outline */}
+            <clipPath id="ireland-clip">
+              {irelandPaths.map((d, i) => (
+                <path key={i} d={d} />
+              ))}
+            </clipPath>
+          </defs>
 
-                  const isDublinArea = DUBLIN_GEO_AREAS.has(geoName);
-                  const rent =
-                    isDublinArea && dublinAdminRents
-                      ? (dublinAdminRents[geoName] ?? null)
-                      : (rentByCounty[csoName] ?? null);
-
-                  const isSelected = selectedCounty === csoName;
-                  const tooltipName =
-                    isDublinArea && dublinAdminRents ? geoName : csoName;
-
-                  return (
-                    <Geography
-                      key={geo.rsmKey}
-                      geography={geo}
-                      onClick={() => router.push(`/county/${slugify(csoName)}`)}
-                      onMouseEnter={() => setTooltip({ name: tooltipName, rent })}
-                      onMouseLeave={() => setTooltip(null)}
-                      style={{
-                        default: {
-                          fill: getRentColour(rent, min, max),
-                          stroke: isSelected ? "#1f2937" : "#ffffff",
-                          strokeWidth: isSelected ? 2 : 0.5,
-                          outline: "none",
-                          cursor: "pointer",
-                          filter: isSelected
-                            ? "drop-shadow(0 0 4px rgba(0,0,0,0.4))"
-                            : "none",
-                        },
-                        hover: {
-                          fill: getRentColour(rent, min, max),
-                          stroke: "#1f2937",
-                          strokeWidth: 1.5,
-                          outline: "none",
-                          cursor: "pointer",
-                          opacity: 0.85,
-                        },
-                        pressed: {
-                          fill: getRentColour(rent, min, max),
-                          stroke: "#1f2937",
-                          strokeWidth: 1.5,
-                          outline: "none",
-                        },
-                      }}
-                    />
-                  );
-                })
-              }
-            </Geographies>
-
-            {/* Area markers — one dot per CSO location with known coordinates */}
-            {markers.map((m) => (
-              <Marker
+          {/* Voronoi zones clipped to Ireland */}
+          <g clipPath="url(#ireland-clip)">
+            {markers.map((m, i) => (
+              <path
                 key={m.location}
-                coordinates={m.coords}
-                onMouseEnter={() => setTooltip({ name: m.location, rent: m.averageRent })}
+                d={voronoiPaths[i] ?? ""}
+                fill={getRentColour(m.averageRent, min, max)}
+                stroke="#ffffff"
+                strokeWidth={0.8}
+                style={{ cursor: "pointer" }}
+                onClick={() => router.push(`/area/${slugify(m.location)}`)}
+                onMouseEnter={() =>
+                  setTooltip({ name: m.location, rent: m.averageRent, x: m.xy[0], y: m.xy[1] })
+                }
                 onMouseLeave={() => setTooltip(null)}
-              >
-                <circle
-                  r={4}
-                  fill={getRentColour(m.averageRent, min, max)}
-                  stroke="#ffffff"
-                  strokeWidth={1}
-                  style={{ cursor: "default" }}
-                />
-              </Marker>
+              />
             ))}
-          </ZoomableGroup>
-        </ComposableMap>
+          </g>
+
+          {/* Ireland county borders (outline only, on top for context) */}
+          <g pointerEvents="none">
+            {irelandPaths.map((d, i) => (
+              <path
+                key={i}
+                d={d}
+                fill="none"
+                stroke="#ffffff"
+                strokeWidth={1}
+                opacity={0.4}
+              />
+            ))}
+          </g>
+
+          {/* Small dot at each area centre for orientation */}
+          <g pointerEvents="none">
+            {markers.map((m) => (
+              <circle
+                key={m.location}
+                cx={m.xy[0]}
+                cy={m.xy[1]}
+                r={2}
+                fill="#ffffff"
+                opacity={0.6}
+              />
+            ))}
+          </g>
+        </svg>
       </div>
 
       {/* Colour legend */}
@@ -290,7 +185,7 @@ export default function IrelandGeoMap({
       </div>
 
       <p className="text-xs text-gray-400 text-center">
-        Dots show individual rental areas. Hover for price. Scroll to zoom, drag to pan.
+        Each zone is a rental area. Click any zone for yearly trends.
       </p>
     </div>
   );
