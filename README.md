@@ -1,36 +1,122 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Irish Rent Tracker
+
+A public web application that visualises real rental data across Ireland, letting you explore average rents by county, property type, and bedroom count — and check whether your own rent is fair against the market.
+
+> **Data source**: Tracks *actual rents paid* (from RTB registrations), not advertised asking prices.
+
+---
+
+## Features
+
+- **Interactive county map** — choropleth visualisation of average rents across all 26 counties
+- **Filter by bedroom count & property type** — narrow results to what matters for your search
+- **"Is my rent fair?" checker** — compare your rent against the local average
+- **Historical trend charts** — rent movements from 2008 to present
+- **National statistics** — year-on-year change, most/least expensive counties at a glance
+
+---
+
+## Data Sources
+
+### Residential Tenancies Board (RTB) via CSO PxStat
+
+All rent figures come from the **[CSO PxStat API](https://ws.cso.ie/public/api.restful/PxStat.Data.Cube_API.ReadDataset)**, which publishes RTB rental registration data.
+
+| Property | Detail |
+|---|---|
+| **Dataset** | [`RIA02`](https://ws.cso.ie/public/api.restful/PxStat.Data.Cube_API.ReadDataset/RIA02/JSON-stat/1.0/en) — RTB Average Monthly Rent |
+| **Coverage** | 2008 – present, ~120 locations across Ireland |
+| **Dimensions** | Year × Location × Bedroom count × Property type |
+| **Format** | [JSON-stat](https://json-stat.org/) (values stored as a flat indexed array) |
+| **Update cadence** | Quarterly |
+| **Authentication** | None — fully public API |
+
+The API response is in **JSON-stat format**, a compact statistical data format where all values are stored as a single flat array indexed by the Cartesian product of the dataset dimensions. The app uses the [`jsonstat`](https://www.npmjs.com/package/jsonstat) npm package plus a custom parser (`lib/cso-api.ts`) to decode this into normalised `RentRecord` objects.
+
+#### How the data is consumed
+
+```
+CSO PxStat API (RIA02)
+        │
+        ▼
+lib/cso-api.ts  →  fetchRentData()
+  • Fetches JSON-stat response
+  • Parses flat value array using dimension strides
+  • Normalises into RentRecord[]
+  • Treats 0/nil as null (insufficient data)
+        │
+        ▼
+app/api/rent-data/route.ts  (cached server route)
+  • Wraps fetchRentData() with Next.js ISR
+  • 24-hour revalidation window
+        │
+        ▼
+app/page.tsx  (server component)
+  • Computes national averages, YoY change, county rankings
+  • Passes records to client components
+        │
+        ▼
+components/MapSection.tsx + IrelandMap.tsx
+  • Client-side filtering by bedroom / property type
+  • Choropleth colour scale per county
+```
+
+**Caching**: Data is fetched at build/request time with [Next.js ISR](https://nextjs.org/docs/app/building-your-application/data-fetching/incremental-static-regeneration) (`revalidate: 86400`). No API calls are made client-side; users always receive pre-processed data from the server.
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Framework | [Next.js 14](https://nextjs.org/) (App Router) |
+| Language | TypeScript |
+| Styling | [Tailwind CSS](https://tailwindcss.com/) |
+| Charts | [Recharts](https://recharts.org/) |
+| Maps | [react-simple-maps](https://www.react-simple-maps.io/) |
+| Data parsing | [jsonstat](https://www.npmjs.com/package/jsonstat) |
+
+---
 
 ## Getting Started
 
-First, run the development server:
-
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm run build   # production build
+npm run lint    # ESLint
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+No environment variables or API keys are required — the CSO API is fully public.
 
-## Learn More
+---
 
-To learn more about Next.js, take a look at the following resources:
+## Project Structure
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```
+app/
+  page.tsx                  # Homepage — stats, map, hero
+  api/rent-data/route.ts    # Cached server endpoint
+lib/
+  cso-api.ts                # CSO API client & JSON-stat parser
+  data-helpers.ts           # Currency formatting, slugs, % change
+components/
+  MapSection.tsx            # Map + filter container
+  IrelandMap.tsx            # County choropleth (grid fallback)
+  FilterBar.tsx             # Bedroom / property type selectors
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+---
 
-## Deploy on Vercel
+## Data Attribution
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Rent data is sourced from the **Central Statistics Office Ireland** under the [CSO Open Data Licence](https://www.cso.ie/en/media/csoie/aboutus/documents/csoopendatalicence.pdf), derived from **Residential Tenancies Board** registration data.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- CSO PxStat: [https://data.cso.ie](https://data.cso.ie)
+- RTB Rent Index: [https://www.rtb.ie/rent-index](https://www.rtb.ie/rent-index)
+- Dataset RIA02 direct link: [https://ws.cso.ie/public/api.restful/PxStat.Data.Cube_API.ReadDataset/RIA02/JSON-stat/1.0/en](https://ws.cso.ie/public/api.restful/PxStat.Data.Cube_API.ReadDataset/RIA02/JSON-stat/1.0/en)
