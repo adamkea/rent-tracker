@@ -262,6 +262,7 @@ export default function IrelandGeoMap({
               <Marker
                 key={m.location}
                 coordinates={m.coords}
+                onClick={() => router.push(`/area/${slugify(m.location)}`)}
                 onMouseEnter={() => setTooltip({ name: m.location, rent: m.averageRent })}
                 onMouseLeave={() => setTooltip(null)}
               >
@@ -270,7 +271,7 @@ export default function IrelandGeoMap({
                   fill={getRentColour(m.averageRent, min, max)}
                   stroke="#ffffff"
                   strokeWidth={1}
-                  style={{ cursor: "default" }}
+                  style={{ cursor: "pointer" }}
                 />
               </Marker>
             ))}
@@ -290,7 +291,7 @@ export default function IrelandGeoMap({
       </div>
 
       <p className="text-xs text-gray-400 text-center">
-        Dots show individual rental areas. Hover for price. Scroll to zoom, drag to pan.
+        Dots show individual rental areas. Click a dot for yearly trends. Scroll to zoom, drag to pan.
       </p>
     </div>
   );
