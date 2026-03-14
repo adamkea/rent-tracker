@@ -135,6 +135,17 @@ export async function fetchRentData(): Promise<RentDataset> {
   };
 }
 
+/**
+ * Extracts the county name from a CSO location string.
+ * e.g. "Ballsbridge, Dublin 4" → "Dublin", "Dublin" → "Dublin"
+ */
+export function extractCounty(location: string): string {
+  const commaIdx = location.lastIndexOf(",");
+  if (commaIdx === -1) return location.trim();
+  // Take the part after the last comma and strip trailing digits (e.g. "Dublin 4" → "Dublin")
+  return location.slice(commaIdx + 1).trim().replace(/\s+\d+$/, "").trim();
+}
+
 export function filterRecords(
   records: RentRecord[],
   filters: {
