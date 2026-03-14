@@ -44,7 +44,7 @@ export default function CountyAreasPanel({ county, areas }: CountyAreasPanelProp
   return (
     <div className="mt-2">
       <h3 className="text-sm font-semibold text-gray-700 mb-3">
-        {county} — Individual Area Prices
+        {county === "all" ? "All Areas" : `${county} — Individual Area Prices`}
       </h3>
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
         {sorted.map((area) => {
