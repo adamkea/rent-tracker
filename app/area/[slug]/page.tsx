@@ -30,8 +30,9 @@ export default async function AreaTrendsPage({ params }: { params: Promise<{ slu
   const location = dataset.locations.find((l) => slugify(l) === slug);
   if (!location) return notFound();
 
-  // Get all-type, all-bedroom records for this location across all years
-  const records = filterRecords(dataset.records, { location, bedrooms: "All", propertyType: "All" });
+  // Get all records for this location across all years (no bedroom/type filter —
+  // the CSO data has no literal "All" category; average across all dimensions)
+  const records = filterRecords(dataset.records, { location });
 
   // Build a year → average rent map
   const byYear: Record<number, number[]> = {};
