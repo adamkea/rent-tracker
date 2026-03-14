@@ -5,7 +5,7 @@ import FilterBar, { type ViewMode } from "./FilterBar";
 import IrelandMap from "./IrelandMap";
 import IrelandGeoMap from "./IrelandGeoMap";
 import type { RentRecord } from "@/lib/cso-api";
-import { filterRecords } from "@/lib/cso-api";
+import { filterRecords, extractCounty } from "@/lib/cso-api";
 
 interface MapSectionProps {
   records: RentRecord[];
@@ -25,12 +25,13 @@ export default function MapSection({ records, latestYear }: MapSectionProps) {
       year: latestYear,
     });
 
-    // Average across all matching records per location
+    // Average across all matching records per county
     const byLocation: Record<string, number[]> = {};
     for (const r of filtered) {
       if (r.averageRent === null) continue;
-      if (!byLocation[r.location]) byLocation[r.location] = [];
-      byLocation[r.location].push(r.averageRent);
+      const county = extractCounty(r.location);
+      if (!byLocation[county]) byLocation[county] = [];
+      byLocation[county].push(r.averageRent);
     }
 
     return Object.entries(byLocation)
