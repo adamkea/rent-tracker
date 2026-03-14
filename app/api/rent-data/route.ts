@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { fetchRentData } from "@/lib/cso-api";
 
-export const revalidate = 86400; // 24h ISR
+// Mark route as dynamic so Vercel does not pre-render an ISR fallback.
+// The 24-hour cache is handled at the fetch level inside fetchRentData().
+export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
