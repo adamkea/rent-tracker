@@ -27,7 +27,9 @@ function parseJsonStat(data: any): RentRecord[] {
   const dataset = data.dataset ?? data;
   const dims = dataset.dimension;
   const values: (number | null)[] = dataset.value;
-  const dimIds: string[] = dataset.id;
+
+  // In CSO JSON-stat 1.0, the ordered dimension ID list lives inside `dimension`
+  const dimIds: string[] = dims.id;
 
   const dimCategories = dimIds.map((id: string) => {
     const cats = dims[id].category;
@@ -39,45 +41,59 @@ function parseJsonStat(data: any): RentRecord[] {
     return cats.label as Record<string, string>;
   });
 
-  // Strides for row-major traversal
+  // Identify semantic dimensions by their label (dimension keys are opaque CSO codes)
+  const dimLabelNames = dimIds.map((id: string) =>
+    (dims[id].label as string).toLowerCase()
+  );
+
+  const findDimPos = (keywords: string[]) =>
+    dimLabelNames.findIndex((l) => keywords.some((k) => l.includes(k)));
+
+  const yearPos = findDimPos(["year", "tlist"]) !== -1
+    ? findDimPos(["year", "tlist"])
+    : dimIds.findIndex((id) => dimCategories[dimIds.indexOf(id)][0]?.match(/^\d{4}$/));
+
+  const locationPos = findDimPos(["location", "area", "region", "county"]);
+  const bedroomsPos = findDimPos(["bedroom", "bed"]);
+  const propertyTypePos = findDimPos(["property type", "property"]);
+
+  // Strides for row-major flat-index traversal
   const strides: number[] = new Array(dimIds.length).fill(1);
   for (let i = dimIds.length - 2; i >= 0; i--) {
     strides[i] = strides[i + 1] * dimCategories[i + 1].length;
   }
 
-  const get = (coords: number[], name: string) => {
-    const pos = dimIds.indexOf(name);
-    if (pos === -1) return null;
-    const code = dimCategories[pos][coords[pos]];
-    return { code, label: dimLabels[pos][code] ?? code };
-  };
-
-  // Find the year dimension by looking for 4-digit codes
-  const findYearDimId = () => {
-    return dimIds.find((id) =>
-      dimCategories[dimIds.indexOf(id)][0]?.match(/^\d{4}$/)
-    );
-  };
-
-  const yearDimId = "TLIST(A1)" in dims ? "TLIST(A1)" : findYearDimId() ?? "";
-
-  const records: RentRecord[] = [];
-
-  for (let idx = 0; idx < values.length; idx++) {
+  const decode = (idx: number): number[] => {
     const coords: number[] = [];
     let remaining = idx;
     for (let d = 0; d < dimIds.length; d++) {
       coords.push(Math.floor(remaining / strides[d]));
       remaining = remaining % strides[d];
     }
+    return coords;
+  };
 
-    const area = get(coords, "CL_AREA");
-    const yearDim = yearDimId ? get(coords, yearDimId) : null;
-    const beds = get(coords, "F_BEDS") ?? get(coords, "Bedrooms");
-    const propType =
-      get(coords, "PROPERTY_TYPE") ?? get(coords, "PropertyType");
+  const getAt = (coords: number[], pos: number) => {
+    if (pos === -1) return null;
+    const code = dimCategories[pos][coords[pos]];
+    return { code, label: dimLabels[pos][code] ?? code };
+  };
 
-    if (!area || !yearDim) continue;
+  const records: RentRecord[] = [];
+
+  for (let idx = 0; idx < values.length; idx++) {
+    const coords = decode(idx);
+
+    const yearDim = getAt(coords, yearPos);
+    const area = getAt(coords, locationPos);
+
+    if (!yearDim || !area) continue;
+
+    // Skip aggregate rows (year code that isn't a 4-digit number)
+    if (!yearDim.code.match(/^\d{4}$/)) continue;
+
+    const beds = getAt(coords, bedroomsPos);
+    const propType = getAt(coords, propertyTypePos);
 
     const rawValue = values[idx];
     records.push({
