@@ -135,15 +135,44 @@ export async function fetchRentData(): Promise<RentDataset> {
   };
 }
 
+// All 26 counties of the Republic of Ireland (canonical names)
+export const IRISH_COUNTIES = [
+  "Carlow", "Cavan", "Clare", "Cork", "Donegal", "Dublin",
+  "Galway", "Kerry", "Kildare", "Kilkenny", "Laois", "Leitrim",
+  "Limerick", "Longford", "Louth", "Mayo", "Meath", "Monaghan",
+  "Offaly", "Roscommon", "Sligo", "Tipperary", "Waterford",
+  "Westmeath", "Wexford", "Wicklow",
+] as const;
+
+const COUNTY_SET = new Set(IRISH_COUNTIES);
+
 /**
- * Extracts the county name from a CSO location string.
- * e.g. "Ballsbridge, Dublin 4" → "Dublin", "Dublin" → "Dublin"
+ * Extracts the county name from a CSO location string and normalises it
+ * to one of the 26 canonical Irish county names.
+ * e.g. "Ballsbridge, Dublin 4" → "Dublin"
+ *      "Kildare Town"          → "Kildare"
+ *      "Galway City"           → "Galway"
  */
 export function extractCounty(location: string): string {
   const commaIdx = location.lastIndexOf(",");
-  if (commaIdx === -1) return location.trim();
-  // Take the part after the last comma and strip trailing digits (e.g. "Dublin 4" → "Dublin")
-  return location.slice(commaIdx + 1).trim().replace(/\s+\d+$/, "").trim();
+  // Take the relevant part: after the last comma if present, else the whole string
+  const raw = commaIdx !== -1
+    ? location.slice(commaIdx + 1).trim()
+    : location.trim();
+
+  // Strip trailing postal/district numbers (e.g. "Dublin 4" → "Dublin")
+  const stripped = raw.replace(/\s+\d+[A-Za-z]*$/, "").trim();
+
+  // If it directly matches a county, return it
+  if (COUNTY_SET.has(stripped as typeof IRISH_COUNTIES[number])) return stripped;
+
+  // Otherwise check if the raw/stripped string starts with a known county name
+  for (const county of IRISH_COUNTIES) {
+    if (stripped.startsWith(county) || raw.startsWith(county)) return county;
+  }
+
+  // Fallback: return stripped string as-is
+  return stripped;
 }
 
 export function filterRecords(
