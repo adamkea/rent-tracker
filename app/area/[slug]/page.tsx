@@ -21,7 +21,7 @@ export default async function AreaTrendsPage({ params }: { params: Promise<{ slu
   if (!dataset) {
     return (
       <main className="max-w-4xl mx-auto px-4 py-16 text-center">
-        <p className="text-gray-500">Could not load rent data. CSO API may be temporarily unavailable.</p>
+        <p className="text-gray-500 dark:text-gray-400">Could not load rent data. CSO API may be temporarily unavailable.</p>
         <Link href="/" className="mt-4 inline-block text-emerald-600 underline">← Back to home</Link>
       </main>
     );
@@ -71,55 +71,55 @@ export default async function AreaTrendsPage({ params }: { params: Promise<{ slu
       </Link>
 
       {/* Header */}
-      <h1 className="text-3xl font-bold text-gray-900 mb-1">{location}</h1>
-      <p className="text-gray-500 text-sm mb-8">
+      <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-1">{location}</h1>
+      <p className="text-gray-500 dark:text-gray-400 text-sm mb-8">
         Rent price trends · {firstEntry?.year ?? ""}–{latestEntry?.year ?? ""} · RTB data via CSO PxStat
       </p>
 
       {/* Summary stats */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-10">
-        <div className="bg-emerald-50 rounded-xl p-4">
-          <p className="text-xs text-emerald-700 font-medium uppercase tracking-wide mb-1">Latest avg rent</p>
-          <p className="text-2xl font-bold text-gray-900">{formatCurrency(latestEntry?.avg ?? null)}<span className="text-sm font-normal text-gray-500">/mo</span></p>
-          <p className="text-xs text-gray-500 mt-0.5">{latestEntry?.year}</p>
+        <div className="bg-emerald-50 dark:bg-emerald-900/30 rounded-xl p-4">
+          <p className="text-xs text-emerald-700 dark:text-emerald-400 font-medium uppercase tracking-wide mb-1">Latest avg rent</p>
+          <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{formatCurrency(latestEntry?.avg ?? null)}<span className="text-sm font-normal text-gray-500 dark:text-gray-400">/mo</span></p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{latestEntry?.year}</p>
         </div>
-        <div className="bg-gray-50 rounded-xl p-4">
-          <p className="text-xs text-gray-500 font-medium uppercase tracking-wide mb-1">Year-on-year</p>
-          <p className={`text-2xl font-bold ${latestEntry?.change != null && latestEntry.change > 0 ? "text-red-600" : latestEntry?.change != null && latestEntry.change < 0 ? "text-emerald-600" : "text-gray-900"}`}>
+        <div className="bg-gray-50 dark:bg-gray-800 rounded-xl p-4">
+          <p className="text-xs text-gray-500 dark:text-gray-400 font-medium uppercase tracking-wide mb-1">Year-on-year</p>
+          <p className={`text-2xl font-bold ${latestEntry?.change != null && latestEntry.change > 0 ? "text-red-600" : latestEntry?.change != null && latestEntry.change < 0 ? "text-emerald-600" : "text-gray-900 dark:text-gray-100"}`}>
             {formatPercent(latestEntry?.change ?? null)}
           </p>
-          <p className="text-xs text-gray-500 mt-0.5">{(latestEntry?.year ?? 1) - 1}→{latestEntry?.year}</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{(latestEntry?.year ?? 1) - 1}→{latestEntry?.year}</p>
         </div>
-        <div className="bg-gray-50 rounded-xl p-4">
-          <p className="text-xs text-gray-500 font-medium uppercase tracking-wide mb-1">Total change</p>
-          <p className={`text-2xl font-bold ${totalChange != null && totalChange > 0 ? "text-red-600" : totalChange != null && totalChange < 0 ? "text-emerald-600" : "text-gray-900"}`}>
+        <div className="bg-gray-50 dark:bg-gray-800 rounded-xl p-4">
+          <p className="text-xs text-gray-500 dark:text-gray-400 font-medium uppercase tracking-wide mb-1">Total change</p>
+          <p className={`text-2xl font-bold ${totalChange != null && totalChange > 0 ? "text-red-600" : totalChange != null && totalChange < 0 ? "text-emerald-600" : "text-gray-900 dark:text-gray-100"}`}>
             {formatPercent(totalChange)}
           </p>
-          <p className="text-xs text-gray-500 mt-0.5">{firstEntry?.year}→{latestEntry?.year}</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{firstEntry?.year}→{latestEntry?.year}</p>
         </div>
       </div>
 
       {/* Chart */}
-      <div className="bg-white border border-gray-200 rounded-2xl p-6 mb-8">
-        <h2 className="text-base font-semibold text-gray-900 mb-4">Average monthly rent by year</h2>
+      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl p-6 mb-8">
+        <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-4">Average monthly rent by year</h2>
         <AreaTrendsChart data={trendsData} />
       </div>
 
       {/* Year-by-year table */}
-      <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl overflow-hidden">
         <table className="w-full text-sm">
           <thead>
-            <tr className="bg-gray-50 border-b border-gray-200">
-              <th className="px-4 py-3 text-left font-semibold text-gray-700">Year</th>
-              <th className="px-4 py-3 text-right font-semibold text-gray-700">Avg rent/mo</th>
-              <th className="px-4 py-3 text-right font-semibold text-gray-700">Change</th>
+            <tr className="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+              <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-gray-300">Year</th>
+              <th className="px-4 py-3 text-right font-semibold text-gray-700 dark:text-gray-300">Avg rent/mo</th>
+              <th className="px-4 py-3 text-right font-semibold text-gray-700 dark:text-gray-300">Change</th>
             </tr>
           </thead>
           <tbody>
             {[...trendsData].reverse().map((row, i) => (
-              <tr key={row.year} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                <td className="px-4 py-3 font-medium text-gray-900">{row.year}</td>
-                <td className="px-4 py-3 text-right text-gray-900">{formatCurrency(row.avg)}</td>
+              <tr key={row.year} className={i % 2 === 0 ? "bg-white dark:bg-gray-900" : "bg-gray-50 dark:bg-gray-800"}>
+                <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">{row.year}</td>
+                <td className="px-4 py-3 text-right text-gray-900 dark:text-gray-100">{formatCurrency(row.avg)}</td>
                 <td className={`px-4 py-3 text-right font-medium ${row.change == null ? "text-gray-400" : row.change > 0 ? "text-red-600" : "text-emerald-600"}`}>
                   {row.change == null ? "—" : formatPercent(row.change)}
                 </td>
