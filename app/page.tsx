@@ -60,19 +60,19 @@ export default async function HomePage() {
   return (
     <main>
       {/* Hero */}
-      <section className="bg-white border-b border-gray-100">
+      <section className="bg-white dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14 flex flex-col gap-4">
           <div className="flex items-center gap-2">
-            <span className="bg-emerald-100 text-emerald-700 text-xs font-semibold px-2.5 py-1 rounded-full uppercase tracking-wide">
+            <span className="bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 text-xs font-semibold px-2.5 py-1 rounded-full uppercase tracking-wide">
               RTB data · {latestYear}
             </span>
             <span className="text-gray-400 text-xs">Updates quarterly</span>
           </div>
-          <h1 className="text-4xl sm:text-5xl font-bold text-gray-900 leading-tight max-w-2xl">
+          <h1 className="text-4xl sm:text-5xl font-bold text-gray-900 dark:text-gray-100 leading-tight max-w-2xl">
             Real Irish rent data,{" "}
             <span className="text-emerald-600">no spin</span>
           </h1>
-          <p className="text-gray-500 text-lg max-w-xl">
+          <p className="text-gray-500 dark:text-gray-400 text-lg max-w-xl">
             Explore what people are actually paying — not asking prices. Filter
             by county, bedroom count, and property type. Check whether your own
             rent is fair.
@@ -86,7 +86,7 @@ export default async function HomePage() {
             </Link>
             <a
               href="#map"
-              className="border border-gray-200 text-gray-700 font-semibold px-6 py-3 rounded-full hover:bg-gray-50 transition-colors"
+              className="border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 font-semibold px-6 py-3 rounded-full hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
             >
               Explore the map
             </a>
@@ -164,18 +164,18 @@ export default async function HomePage() {
       <section id="map" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="flex flex-col lg:flex-row gap-10">
           <div className="flex-1 min-w-0">
-            <h2 className="text-2xl font-bold text-gray-900 mb-1">
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">
               Average rent by county
             </h2>
-            <p className="text-gray-500 text-sm mb-6">
+            <p className="text-gray-500 dark:text-gray-400 text-sm mb-6">
               {latestYear} annual averages · RTB data via CSO PxStat · Click a county for trends
             </p>
 
             {stats ? (
               <MapSection records={stats.records} latestYear={latestYear} />
             ) : (
-              <div className="w-full aspect-[3/4] bg-gray-100 rounded-xl border border-dashed border-gray-300 flex items-center justify-center">
-                <p className="text-gray-400 text-sm">
+              <div className="w-full aspect-[3/4] bg-gray-100 dark:bg-gray-800 rounded-xl border border-dashed border-gray-300 dark:border-gray-700 flex items-center justify-center">
+                <p className="text-gray-400 dark:text-gray-500 text-sm">
                   Could not load rent data. CSO API may be temporarily unavailable.
                 </p>
               </div>
@@ -185,11 +185,11 @@ export default async function HomePage() {
           {/* Sidebar */}
           <aside className="lg:w-80 flex flex-col gap-6">
             {/* Rent checker CTA */}
-            <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-6">
-              <h3 className="font-bold text-gray-900 text-lg mb-2">
+            <div className="bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-100 dark:border-emerald-800 rounded-2xl p-6">
+              <h3 className="font-bold text-gray-900 dark:text-gray-100 text-lg mb-2">
                 Is your rent fair?
               </h3>
-              <p className="text-gray-600 text-sm mb-4">
+              <p className="text-gray-600 dark:text-gray-400 text-sm mb-4">
                 Enter your county, property type, and monthly rent to see how
                 you compare to the RTB average.
               </p>
@@ -202,11 +202,11 @@ export default async function HomePage() {
             </div>
 
             {/* About the data */}
-            <div className="bg-white border border-gray-200 rounded-2xl p-6">
-              <h3 className="font-semibold text-gray-900 mb-2">
+            <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl p-6">
+              <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-2">
                 About the data
               </h3>
-              <ul className="text-sm text-gray-600 space-y-2">
+              <ul className="text-sm text-gray-600 dark:text-gray-400 space-y-2">
                 <li>
                   Source: RTB Rent Index via{" "}
                   <a

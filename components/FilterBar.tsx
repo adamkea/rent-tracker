@@ -47,13 +47,13 @@ export default function FilterBar({
       {/* View toggle + county filter row */}
       <div className="flex flex-wrap gap-3 items-center justify-between">
         {/* View mode toggle */}
-        <div className="flex rounded-lg border border-gray-200 bg-white overflow-hidden shadow-sm">
+        <div className="flex rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 overflow-hidden shadow-sm">
           <button
             onClick={() => onViewModeChange("grid")}
-            className={`px-4 py-1.5 text-sm font-medium transition-colors flex items-center gap-1.5 border-r border-gray-200 ${
+            className={`px-4 py-1.5 text-sm font-medium transition-colors flex items-center gap-1.5 border-r border-gray-200 dark:border-gray-700 ${
               viewMode === "grid"
                 ? "bg-emerald-600 text-white"
-                : "text-gray-600 hover:bg-gray-50"
+                : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"
             }`}
           >
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -69,7 +69,7 @@ export default function FilterBar({
             className={`px-4 py-1.5 text-sm font-medium transition-colors flex items-center gap-1.5 ${
               viewMode === "map"
                 ? "bg-emerald-600 text-white"
-                : "text-gray-600 hover:bg-gray-50"
+                : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"
             }`}
           >
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -81,14 +81,14 @@ export default function FilterBar({
 
         {/* County filter */}
         <div className="flex items-center gap-2">
-          <label htmlFor="county-filter" className="text-sm font-medium text-gray-500 whitespace-nowrap">
+          <label htmlFor="county-filter" className="text-sm font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap">
             County:
           </label>
           <select
             id="county-filter"
             value={county}
             onChange={(e) => onCountyChange(e.target.value)}
-            className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+            className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
           >
             <option value="all">All counties</option>
             {counties.map((c) => (
@@ -102,17 +102,17 @@ export default function FilterBar({
 
       {/* Bedroom & property type filters */}
       <div className="flex flex-wrap gap-3 items-center">
-        <span className="text-sm font-medium text-gray-500">Filter by:</span>
+        <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Filter by:</span>
 
-        <div className="flex rounded-lg border border-gray-200 bg-white overflow-hidden shadow-sm">
+        <div className="flex rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 overflow-hidden shadow-sm">
           {BEDROOM_OPTIONS.map((opt) => (
             <button
               key={opt.value}
               onClick={() => onBedroomsChange(opt.value)}
-              className={`px-3 py-1.5 text-sm font-medium transition-colors border-r border-gray-200 last:border-r-0 ${
+              className={`px-3 py-1.5 text-sm font-medium transition-colors border-r border-gray-200 dark:border-gray-700 last:border-r-0 ${
                 bedrooms === opt.value
                   ? "bg-emerald-600 text-white"
-                  : "text-gray-600 hover:bg-gray-50"
+                  : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"
               }`}
             >
               {opt.label}
@@ -120,15 +120,15 @@ export default function FilterBar({
           ))}
         </div>
 
-        <div className="flex rounded-lg border border-gray-200 bg-white overflow-hidden shadow-sm">
+        <div className="flex rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 overflow-hidden shadow-sm">
           {PROPERTY_TYPE_OPTIONS.map((opt) => (
             <button
               key={opt.value}
               onClick={() => onPropertyTypeChange(opt.value)}
-              className={`px-3 py-1.5 text-sm font-medium transition-colors border-r border-gray-200 last:border-r-0 ${
+              className={`px-3 py-1.5 text-sm font-medium transition-colors border-r border-gray-200 dark:border-gray-700 last:border-r-0 ${
                 propertyType === opt.value
                   ? "bg-emerald-600 text-white"
-                  : "text-gray-600 hover:bg-gray-50"
+                  : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"
               }`}
             >
               {opt.label}
