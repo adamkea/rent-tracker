@@ -1,4 +1,4 @@
-import { fetchRentData, filterRecords } from "@/lib/cso-api";
+import { fetchRentData, filterRecords, extractCounty } from "@/lib/cso-api";
 import { formatCurrency, calcPercentChange, formatPercent } from "@/lib/data-helpers";
 import MapSection from "@/components/MapSection";
 import Link from "next/link";
@@ -26,17 +26,44 @@ async function getStats() {
     const nationalPrev = avgRent(prevAll);
     const yoyChange = calcPercentChange(nationalPrev, nationalLatest);
 
-    // Most expensive county
-    const byCounty = dataset.locations.map((loc) => {
-      const recs = filterRecords(records, { location: loc, year: latestYear });
-      return { county: loc, avg: avgRent(recs) };
-    });
-    const mostExpensive = byCounty
-      .filter((c) => c.avg !== null)
-      .sort((a, b) => (b.avg ?? 0) - (a.avg ?? 0))[0];
-    const leastExpensive = byCounty
-      .filter((c) => c.avg !== null)
-      .sort((a, b) => (a.avg ?? 0) - (b.avg ?? 0))[0];
+    // Most expensive / most affordable county — group town-level locations by county
+    const latestRecords = filterRecords(records, { year: latestYear });
+
+    // Build per-town averages
+    const byTown = dataset.locations.map((loc) => {
+      const recs = filterRecords(latestRecords, { location: loc });
+      return { town: loc, county: extractCounty(loc), avg: avgRent(recs) };
+    }).filter((t) => t.avg !== null);
+
+    // Aggregate to county level
+    const countyMap = new Map<string, number[]>();
+    for (const t of byTown) {
+      if (!countyMap.has(t.county)) countyMap.set(t.county, []);
+      countyMap.get(t.county)!.push(t.avg!);
+    }
+    const byCounty = Array.from(countyMap.entries()).map(([county, avgs]) => ({
+      county,
+      avg: avgs.reduce((a, b) => a + b, 0) / avgs.length,
+    }));
+
+    const sortedDesc = byCounty.sort((a, b) => b.avg - a.avg);
+    const mostExpensiveCounty = sortedDesc[0];
+    const leastExpensiveCounty = sortedDesc[sortedDesc.length - 1];
+
+    // Find the most/least expensive individual town within each county
+    const townsInMostExpensive = byTown
+      .filter((t) => t.county === mostExpensiveCounty?.county)
+      .sort((a, b) => (b.avg ?? 0) - (a.avg ?? 0));
+    const townsInLeastExpensive = byTown
+      .filter((t) => t.county === leastExpensiveCounty?.county)
+      .sort((a, b) => (a.avg ?? 0) - (b.avg ?? 0));
+
+    const mostExpensive = mostExpensiveCounty
+      ? { county: mostExpensiveCounty.county, avg: mostExpensiveCounty.avg, town: townsInMostExpensive[0]?.town ?? null }
+      : undefined;
+    const leastExpensive = leastExpensiveCounty
+      ? { county: leastExpensiveCounty.county, avg: leastExpensiveCounty.avg, town: townsInLeastExpensive[0]?.town ?? null }
+      : undefined;
 
     return {
       nationalAvg: nationalLatest,
@@ -123,6 +150,11 @@ export default async function HomePage() {
                 <p className="text-2xl font-bold truncate">
                   {stats.mostExpensive?.county ?? "—"}
                 </p>
+                {stats.mostExpensive?.town && (
+                  <p className="text-emerald-200 text-xs truncate">
+                    {stats.mostExpensive.town}
+                  </p>
+                )}
                 <p className="text-emerald-200 text-sm">
                   {formatCurrency(stats.mostExpensive?.avg ?? null)}/mo
                 </p>
@@ -134,6 +166,11 @@ export default async function HomePage() {
                 <p className="text-2xl font-bold truncate">
                   {stats.leastExpensive?.county ?? "—"}
                 </p>
+                {stats.leastExpensive?.town && (
+                  <p className="text-emerald-200 text-xs truncate">
+                    {stats.leastExpensive.town}
+                  </p>
+                )}
                 <p className="text-emerald-200 text-sm">
                   {formatCurrency(stats.leastExpensive?.avg ?? null)}/mo
                 </p>
