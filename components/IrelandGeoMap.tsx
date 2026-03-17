@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { geoMercator, geoPath } from "d3-geo";
 import { Delaunay } from "d3-delaunay";
 import { useRouter } from "next/navigation";
@@ -73,38 +73,52 @@ export default function IrelandGeoMap({ allAreaData }: IrelandGeoMapProps) {
   }, []);
 
   // Build markers: areas that have both rent data and known coordinates
-  const markers = (allAreaData ?? [])
-    .filter((a) => a.averageRent !== null)
-    .flatMap((a) => {
-      const coords = getAreaCoords(a.location);
-      if (!coords) return [];
-      const xy = projection(coords);
-      if (!xy) return [];
-      return [{ location: a.location, averageRent: a.averageRent as number, xy: xy as [number, number] }];
-    });
+  const markers = useMemo(
+    () =>
+      (allAreaData ?? [])
+        .filter((a) => a.averageRent !== null)
+        .flatMap((a) => {
+          const coords = getAreaCoords(a.location);
+          if (!coords) return [];
+          const xy = projection(coords);
+          if (!xy) return [];
+          return [{ location: a.location, averageRent: a.averageRent as number, xy: xy as [number, number] }];
+        }),
+    [allAreaData]
+  );
 
-  const rents = markers.map((m) => m.averageRent);
-  const min = rents.length ? Math.min(...rents) : 0;
-  const max = rents.length ? Math.max(...rents) : 1;
+  const { min, max } = useMemo(() => {
+    const rents = markers.map((m) => m.averageRent);
+    return {
+      min: rents.length ? Math.min(...rents) : 0,
+      max: rents.length ? Math.max(...rents) : 1,
+    };
+  }, [markers]);
 
-  // Voronoi tessellation in screen space
-  const voronoiPaths: string[] = [];
-  if (markers.length >= 3) {
-    const delaunay = Delaunay.from(markers.map((m) => m.xy));
-    const voronoi = delaunay.voronoi([0, 0, WIDTH, HEIGHT]);
-    for (let i = 0; i < markers.length; i++) {
-      voronoiPaths.push(voronoi.renderCell(i));
+  // Voronoi tessellation in screen space — only recomputes when markers change
+  const voronoiPaths = useMemo(() => {
+    const paths: string[] = [];
+    if (markers.length >= 3) {
+      const delaunay = Delaunay.from(markers.map((m) => m.xy));
+      const voronoi = delaunay.voronoi([0, 0, WIDTH, HEIGHT]);
+      for (let i = 0; i < markers.length; i++) {
+        paths.push(voronoi.renderCell(i));
+      }
     }
-  }
+    return paths;
+  }, [markers]);
 
-  // Ireland outline paths for clipPath + border
-  const irelandPaths = geoFeatures.map((f) => pathGen(f) ?? "");
+  // Ireland outline paths for clipPath + border — only recomputes when GeoJSON loads
+  const irelandPaths = useMemo(
+    () => geoFeatures.map((f) => pathGen(f) ?? ""),
+    [geoFeatures]
+  );
 
   const geoReady = geoFeatures.length > 0;
 
   return (
     <div className="w-full flex flex-col gap-4">
-      <div className="relative w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm overflow-hidden">
+      <div className="relative w-full min-h-[400px] rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm overflow-hidden">
         {/* Loading / error overlay — shown while GeoJSON is being fetched */}
         {!geoReady && (
           <div className="absolute inset-0 flex items-center justify-center bg-white/80 dark:bg-gray-900/80 rounded-xl z-10">
