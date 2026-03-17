@@ -59,7 +59,7 @@ export default function MapSection({ records, latestYear }: MapSectionProps) {
   // Derive bedroom options directly from the records so values always match the data.
   const bedroomOptions = useMemo(() => {
     const cats = Array.from(new Set(records.map((r) => r.bedrooms)))
-      .filter((b) => b !== "All")
+      .filter((b) => !/^all(\s|$)/i.test(b))
       .sort((a, b) => bedroomSortKey(a) - bedroomSortKey(b));
     return [
       { value: "all", label: "All bedrooms" },
