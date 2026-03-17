@@ -2,23 +2,25 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { geoMercator, geoPath } from "d3-geo";
+import type { Feature, Geometry, GeoJsonProperties } from "geojson";
 import { useRouter } from "next/navigation";
 import { slugify } from "@/lib/data-helpers";
 
 const WIDTH = 600;
 const HEIGHT = 680;
 
+type Coord = number[];
+type Ring = Coord[];
+
 /** Fix GeoJSON winding order — this file has clockwise rings which D3 interprets
  *  as "entire globe minus the county". Reversing makes them counter-clockwise. */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function rewindFeature(f: any): any {
+function rewindFeature(f: Feature<Geometry, GeoJsonProperties>): Feature<Geometry, GeoJsonProperties> {
   const geom = f.geometry;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const rev = (ring: any[]) => ring.slice().reverse();
+  const rev = (ring: Ring): Ring => ring.slice().reverse();
   if (geom.type === "Polygon") {
     return { ...f, geometry: { ...geom, coordinates: geom.coordinates.map(rev) } };
   } else if (geom.type === "MultiPolygon") {
-    return { ...f, geometry: { ...geom, coordinates: geom.coordinates.map((poly: any[]) => poly.map(rev)) } };
+    return { ...f, geometry: { ...geom, coordinates: geom.coordinates.map((poly) => poly.map(rev)) } };
   }
   return f;
 }
@@ -71,8 +73,7 @@ interface IrelandGeoMapProps {
 
 export default function IrelandGeoMap({ data, selectedCounty }: IrelandGeoMapProps) {
   const router = useRouter();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [features, setFeatures] = useState<any[]>([]);
+  const [features, setFeatures] = useState<Feature<Geometry, GeoJsonProperties>[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [hovered, setHovered] = useState<string | null>(null);
