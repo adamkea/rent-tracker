@@ -5,6 +5,7 @@ import { geoMercator, geoPath } from "d3-geo";
 import type { Feature, Geometry, GeoJsonProperties } from "geojson";
 import { useRouter } from "next/navigation";
 import { slugify } from "@/lib/data-helpers";
+import { getAreaCoords } from "@/lib/area-coords";
 
 const WIDTH = 600;
 const HEIGHT = 680;
@@ -62,21 +63,25 @@ interface CountyRent {
   averageRent: number | null;
 }
 
+interface AreaRent {
+  location: string;
+  averageRent: number | null;
+}
+
 interface IrelandGeoMapProps {
   data: CountyRent[];
   selectedCounty: string | null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  dublinAreaData?: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  allAreaData?: any;
+  dublinAreaData?: AreaRent[];
+  allAreaData?: AreaRent[];
 }
 
-export default function IrelandGeoMap({ data, selectedCounty }: IrelandGeoMapProps) {
+export default function IrelandGeoMap({ data, selectedCounty, allAreaData }: IrelandGeoMapProps) {
   const router = useRouter();
   const [features, setFeatures] = useState<Feature<Geometry, GeoJsonProperties>[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [hovered, setHovered] = useState<string | null>(null);
+  const [hoveredArea, setHoveredArea] = useState<{ location: string; averageRent: number | null; x: number; y: number } | null>(null);
 
   useEffect(() => {
     fetch("/ireland-counties.geojson")
@@ -100,12 +105,33 @@ export default function IrelandGeoMap({ data, selectedCounty }: IrelandGeoMapPro
   const maxRent = rents.length ? Math.max(...rents) : 1;
 
   // Compute projection AFTER features are loaded so fitSize works correctly
-  const { pathFn, projectionReady } = useMemo(() => {
-    if (features.length === 0) return { pathFn: null, projectionReady: false };
+  const { pathFn, projection, projectionReady } = useMemo(() => {
+    if (features.length === 0) return { pathFn: null, projection: null, projectionReady: false };
     const collection = { type: "FeatureCollection" as const, features };
     const proj = geoMercator().fitSize([WIDTH, HEIGHT], collection);
-    return { pathFn: geoPath(proj), projectionReady: true };
+    return { pathFn: geoPath(proj), projection: proj, projectionReady: true };
   }, [features]);
+
+  // Project area coordinates onto the SVG
+  const areaMarkers = useMemo(() => {
+    if (!projection || !allAreaData) return [];
+    return allAreaData
+      .map((area) => {
+        const coords = getAreaCoords(area.location);
+        if (!coords) return null;
+        const projected = projection(coords);
+        if (!projected) return null;
+        return { ...area, x: projected[0], y: projected[1] };
+      })
+      .filter((m): m is AreaRent & { x: number; y: number } => m !== null);
+  }, [projection, allAreaData]);
+
+  const areaRents = useMemo(
+    () => (allAreaData ?? []).map((a) => a.averageRent).filter((r): r is number => r !== null),
+    [allAreaData],
+  );
+  const areaMinRent = areaRents.length ? Math.min(...areaRents) : 0;
+  const areaMaxRent = areaRents.length ? Math.max(...areaRents) : 1;
 
   const hoveredCounty = hovered ? geoNameToCounty(hovered) : null;
   const hoveredRent = hoveredCounty ? (rentMap.get(hoveredCounty) ?? null) : null;
@@ -125,14 +151,20 @@ export default function IrelandGeoMap({ data, selectedCounty }: IrelandGeoMapPro
           </div>
         )}
 
-        {/* Hover tooltip */}
-        {hovered && (
+        {/* Hover tooltip — county or area */}
+        {(hovered || hoveredArea) && (
           <div className="absolute top-3 left-3 z-10 pointer-events-none bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-md px-3 py-2 text-sm">
-            <p className="font-semibold text-gray-800 dark:text-gray-100">{hovered}</p>
+            <p className="font-semibold text-gray-800 dark:text-gray-100">
+              {hoveredArea ? hoveredArea.location : hovered}
+            </p>
             <p className="text-gray-500 dark:text-gray-400">
-              {hoveredRent
-                ? `€${hoveredRent.toLocaleString("en-IE")} / month`
-                : "No data"}
+              {hoveredArea
+                ? (hoveredArea.averageRent
+                    ? `€${hoveredArea.averageRent.toLocaleString("en-IE")} / month`
+                    : "No data")
+                : (hoveredRent
+                    ? `€${hoveredRent.toLocaleString("en-IE")} / month`
+                    : "No data")}
             </p>
             <p className="text-xs text-emerald-600 mt-0.5">Click to explore →</p>
           </div>
@@ -166,6 +198,23 @@ export default function IrelandGeoMap({ data, selectedCounty }: IrelandGeoMapPro
                 />
               );
             })}
+            {/* Area markers — individual locations from the grid view */}
+            {areaMarkers.map((marker) => (
+              <circle
+                key={marker.location}
+                cx={marker.x}
+                cy={marker.y}
+                r={hoveredArea?.location === marker.location ? 6 : 4}
+                fill={rentColour(marker.averageRent, areaMinRent, areaMaxRent)}
+                stroke="#ffffff"
+                strokeWidth={1.5}
+                opacity={0.9}
+                style={{ cursor: "pointer", transition: "r 0.15s" }}
+                onClick={() => router.push(`/area/${slugify(marker.location)}`)}
+                onMouseEnter={() => { setHoveredArea(marker); setHovered(null); }}
+                onMouseLeave={() => setHoveredArea(null)}
+              />
+            ))}
           </svg>
         )}
       </div>
