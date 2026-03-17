@@ -2,10 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { geoMercator, geoPath } from "d3-geo";
-import { Delaunay } from "d3-delaunay";
 import { useRouter } from "next/navigation";
 import { slugify } from "@/lib/data-helpers";
-import { getAreaCoords } from "@/lib/area-coords";
 
 const WIDTH = 500;
 const HEIGHT = 580;
@@ -27,10 +25,19 @@ const COLOUR_SCALE = [
   "#065f46",
 ];
 
-function getRentColour(rent: number, min: number, max: number): string {
+function getRentColour(rent: number | null, min: number, max: number): string {
+  if (rent === null) return "#e5e7eb";
   const ratio = max === min ? 0.5 : Math.min((rent - min) / (max - min), 1);
   const idx = Math.floor(ratio * (COLOUR_SCALE.length - 1));
   return COLOUR_SCALE[idx];
+}
+
+/** Normalise county name for fuzzy matching (strip City/County suffix, lowercase) */
+function normaliseName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/\s+(city|county|north|south|east|west)$/g, "")
+    .trim();
 }
 
 interface CountyRent {
@@ -50,87 +57,46 @@ interface IrelandGeoMapProps {
   allAreaData?: AreaRent[] | null;
 }
 
-export default function IrelandGeoMap({ allAreaData }: IrelandGeoMapProps) {
+export default function IrelandGeoMap({ data, selectedCounty }: IrelandGeoMapProps) {
   const router = useRouter();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [geoFeatures, setGeoFeatures] = useState<any[]>([]);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [outlineFeature, setOutlineFeature] = useState<any>(null);
   const [geoError, setGeoError] = useState(false);
-  const [tooltip, setTooltip] = useState<{
-    name: string;
-    rent: number | null;
-    x: number;
-    y: number;
-  } | null>(null);
+  const [hoveredCounty, setHoveredCounty] = useState<string | null>(null);
 
   useEffect(() => {
-    // Fetch county borders (for rendering county lines) and dissolved outline (for clip path)
-    Promise.all([
-      fetch("/ireland-counties.geojson").then((r) => { if (!r.ok) throw new Error(); return r.json(); }),
-      fetch("/ireland-outline.geojson").then((r) => { if (!r.ok) throw new Error(); return r.json(); }),
-    ])
-      .then(([counties, outline]) => {
-        setGeoFeatures(counties.features);
-        setOutlineFeature(outline.features[0]);
-      })
+    fetch("/ireland-counties.geojson")
+      .then((r) => { if (!r.ok) throw new Error(); return r.json(); })
+      .then((geo) => setGeoFeatures(geo.features))
       .catch(() => setGeoError(true));
   }, []);
 
-  // Build markers: areas that have both rent data and known coordinates
-  const markers = useMemo(
-    () =>
-      (allAreaData ?? [])
-        .filter((a) => a.averageRent !== null)
-        .flatMap((a) => {
-          const coords = getAreaCoords(a.location);
-          if (!coords) return [];
-          const xy = projection(coords);
-          if (!xy) return [];
-          return [{ location: a.location, averageRent: a.averageRent as number, xy: xy as [number, number] }];
-        }),
-    [allAreaData]
-  );
-
-  const { min, max } = useMemo(() => {
-    const rents = markers.map((m) => m.averageRent);
-    return {
-      min: rents.length ? Math.min(...rents) : 0,
-      max: rents.length ? Math.max(...rents) : 1,
-    };
-  }, [markers]);
-
-  // Voronoi tessellation in screen space — only recomputes when markers change
-  const voronoiPaths = useMemo(() => {
-    const paths: string[] = [];
-    if (markers.length >= 3) {
-      const delaunay = Delaunay.from(markers.map((m) => m.xy));
-      const voronoi = delaunay.voronoi([0, 0, WIDTH, HEIGHT]);
-      for (let i = 0; i < markers.length; i++) {
-        paths.push(voronoi.renderCell(i));
-      }
+  // Build a map from normalised county name → rent value
+  const rentByCounty = useMemo(() => {
+    const map = new Map<string, number | null>();
+    for (const d of data) {
+      map.set(normaliseName(d.county), d.averageRent);
     }
-    return paths;
-  }, [markers]);
+    return map;
+  }, [data]);
 
-  // County border paths for rendering — only recomputes when GeoJSON loads
-  const irelandPaths = useMemo(
-    () => geoFeatures.map((f) => pathGen(f) ?? ""),
-    [geoFeatures]
+  const rents = useMemo(
+    () => data.map((d) => d.averageRent).filter((r): r is number => r !== null),
+    [data]
   );
-
-  // Single dissolved Ireland outline for the SVG clip path
-  const clipPath = useMemo(
-    () => (outlineFeature ? (pathGen(outlineFeature) ?? "") : ""),
-    [outlineFeature]
-  );
+  const min = rents.length ? Math.min(...rents) : 0;
+  const max = rents.length ? Math.max(...rents) : 1;
 
   const geoReady = geoFeatures.length > 0;
+
+  // Find tooltip rent for hovered county
+  const tooltipRent = hoveredCounty
+    ? rentByCounty.get(normaliseName(hoveredCounty)) ?? null
+    : null;
 
   return (
     <div className="w-full flex flex-col gap-4">
       <div className="relative w-full min-h-[400px] rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm overflow-hidden">
-        {/* Loading / error overlay — shown while GeoJSON is being fetched */}
         {!geoReady && (
           <div className="absolute inset-0 flex items-center justify-center bg-white/80 dark:bg-gray-900/80 rounded-xl z-10">
             {geoError
@@ -139,16 +105,17 @@ export default function IrelandGeoMap({ allAreaData }: IrelandGeoMapProps) {
             }
           </div>
         )}
+
         {/* Tooltip */}
-        {tooltip && (
+        {hoveredCounty && (
           <div className="absolute top-3 left-3 z-10 bg-white border border-gray-200 rounded-lg px-3 py-2 shadow-md text-sm pointer-events-none">
-            <p className="font-semibold text-gray-800">{tooltip.name}</p>
+            <p className="font-semibold text-gray-800">{hoveredCounty}</p>
             <p className="text-gray-500">
-              {tooltip.rent
-                ? `€${tooltip.rent.toLocaleString("en-IE")}/mo avg`
+              {tooltipRent
+                ? `€${tooltipRent.toLocaleString("en-IE")}/mo avg`
                 : "No data"}
             </p>
-            <p className="text-emerald-600 text-xs mt-0.5">Click for yearly trends →</p>
+            <p className="text-emerald-600 text-xs mt-0.5">Click for details →</p>
           </div>
         )}
 
@@ -156,60 +123,29 @@ export default function IrelandGeoMap({ allAreaData }: IrelandGeoMapProps) {
           viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
           style={{ width: "100%", height: "auto", display: "block" }}
         >
-          <defs>
-            {/* Mask: white over Ireland, black everywhere else */}
-            <mask id="ireland-mask">
-              <rect width={WIDTH} height={HEIGHT} fill="black" />
-              <path d={clipPath} fill="white" fillRule="evenodd" />
-            </mask>
-          </defs>
-
-          {/* Voronoi zones masked to Ireland */}
-          <g mask="url(#ireland-mask)">
-            {markers.map((m, i) => (
-              <path
-                key={m.location}
-                d={voronoiPaths[i] ?? ""}
-                fill={getRentColour(m.averageRent, min, max)}
-                stroke="#ffffff"
-                strokeWidth={0.8}
-                style={{ cursor: "pointer" }}
-                onClick={() => router.push(`/area/${slugify(m.location)}`)}
-                onMouseEnter={() =>
-                  setTooltip({ name: m.location, rent: m.averageRent, x: m.xy[0], y: m.xy[1] })
-                }
-                onMouseLeave={() => setTooltip(null)}
-              />
-            ))}
-          </g>
-
-          {/* Ireland county borders (outline only, on top for context) */}
-          <g pointerEvents="none">
-            {irelandPaths.map((d, i) => (
+          {geoFeatures.map((f, i) => {
+            const name: string = f.properties?.name ?? "";
+            const rent = rentByCounty.get(normaliseName(name)) ?? null;
+            const isSelected = selectedCounty
+              ? normaliseName(name) === normaliseName(selectedCounty)
+              : false;
+            const isHovered = hoveredCounty === name;
+            const d = pathGen(f) ?? "";
+            return (
               <path
                 key={i}
                 d={d}
-                fill="none"
+                fill={getRentColour(rent, min, max)}
                 stroke="#ffffff"
-                strokeWidth={1}
-                opacity={0.4}
+                strokeWidth={isSelected || isHovered ? 2 : 0.8}
+                opacity={selectedCounty && !isSelected ? 0.5 : 1}
+                style={{ cursor: "pointer" }}
+                onClick={() => router.push(`/county/${slugify(name)}`)}
+                onMouseEnter={() => setHoveredCounty(name)}
+                onMouseLeave={() => setHoveredCounty(null)}
               />
-            ))}
-          </g>
-
-          {/* Small dot at each area centre for orientation */}
-          <g pointerEvents="none">
-            {markers.map((m) => (
-              <circle
-                key={m.location}
-                cx={m.xy[0]}
-                cy={m.xy[1]}
-                r={2}
-                fill="#ffffff"
-                opacity={0.6}
-              />
-            ))}
-          </g>
+            );
+          })}
         </svg>
       </div>
 
@@ -225,7 +161,7 @@ export default function IrelandGeoMap({ allAreaData }: IrelandGeoMapProps) {
       </div>
 
       <p className="text-xs text-gray-400 text-center">
-        Each zone is a rental area. Click any zone for yearly trends.
+        Each county is coloured by average rent. Click for details.
       </p>
     </div>
   );
