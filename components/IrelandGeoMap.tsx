@@ -157,14 +157,15 @@ export default function IrelandGeoMap({ allAreaData }: IrelandGeoMapProps) {
           style={{ width: "100%", height: "auto", display: "block" }}
         >
           <defs>
-            {/* Clip Voronoi cells to Ireland's outline */}
-            <clipPath id="ireland-clip">
-              <path d={clipPath} fillRule="evenodd" />
-            </clipPath>
+            {/* Mask: white over Ireland, black everywhere else */}
+            <mask id="ireland-mask">
+              <rect width={WIDTH} height={HEIGHT} fill="black" />
+              <path d={clipPath} fill="white" fillRule="evenodd" />
+            </mask>
           </defs>
 
-          {/* Voronoi zones clipped to Ireland */}
-          <g clipPath="url(#ireland-clip)">
+          {/* Voronoi zones masked to Ireland */}
+          <g mask="url(#ireland-mask)">
             {markers.map((m, i) => (
               <path
                 key={m.location}
