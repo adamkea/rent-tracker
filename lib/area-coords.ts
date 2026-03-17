@@ -243,11 +243,15 @@ const COORDS: Record<string, [number, number]> = {
 export function getAreaCoords(location: string): [number, number] | null {
   if (COORDS[location]) return COORDS[location];
 
-  // "Naas, Kildare" → try "Naas"
   const commaIdx = location.lastIndexOf(",");
   if (commaIdx !== -1) {
+    // "Naas, Kildare" → try "Naas"
     const area = location.slice(0, commaIdx).trim();
     if (COORDS[area]) return COORDS[area];
+
+    // "Ballsbridge, Dublin 4" → try "Dublin 4"
+    const after = location.slice(commaIdx + 1).trim();
+    if (COORDS[after]) return COORDS[after];
   }
 
   return null;
