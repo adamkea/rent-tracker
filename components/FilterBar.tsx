@@ -1,14 +1,5 @@
 "use client";
 
-export const BEDROOM_OPTIONS = [
-  { value: "all", label: "All bedrooms" },
-  { value: "1 Bedroom", label: "1 bed" },
-  { value: "2 Bedrooms", label: "2 beds" },
-  { value: "3 Bedrooms", label: "3 beds" },
-  { value: "4 Bedrooms", label: "4 beds" },
-  { value: "5 or more Bedrooms", label: "5+ beds" },
-];
-
 export const PROPERTY_TYPE_OPTIONS = [
   { value: "all", label: "All types" },
   { value: "Apartment", label: "Apartment" },
@@ -21,6 +12,7 @@ export type ViewMode = "grid" | "map";
 
 interface FilterBarProps {
   bedrooms: string;
+  bedroomOptions: { value: string; label: string }[];
   propertyType: string;
   county: string;
   counties: string[];
@@ -33,6 +25,7 @@ interface FilterBarProps {
 
 export default function FilterBar({
   bedrooms,
+  bedroomOptions,
   propertyType,
   county,
   counties,
@@ -105,7 +98,7 @@ export default function FilterBar({
         <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Filter by:</span>
 
         <div className="flex rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 overflow-hidden shadow-sm">
-          {BEDROOM_OPTIONS.map((opt) => (
+          {bedroomOptions.map((opt) => (
             <button
               key={opt.value}
               onClick={() => onBedroomsChange(opt.value)}

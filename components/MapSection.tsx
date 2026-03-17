@@ -12,11 +12,34 @@ interface MapSectionProps {
   latestYear: number;
 }
 
+/** Convert a raw CSO bedroom label to a short display label. */
+function bedroomDisplayLabel(category: string): string {
+  const m = category.match(/^(\d+)\s+bedroom/i);
+  if (m) return `${m[1]} bed${Number(m[1]) !== 1 ? "s" : ""}`;
+  if (/5\s+or\s+more/i.test(category)) return "5+ beds";
+  return category;
+}
+
 export default function MapSection({ records, latestYear }: MapSectionProps) {
   const [bedrooms, setBedrooms] = useState("all");
   const [propertyType, setPropertyType] = useState("all");
   const [county, setCounty] = useState("all");
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
+
+  // Derive bedroom options directly from the records so values always match the data.
+  const bedroomOptions = useMemo(() => {
+    const cats = Array.from(new Set(records.map((r) => r.bedrooms)))
+      .filter((b) => b !== "All")
+      .sort((a, b) => {
+        const na = parseInt(a) || 999;
+        const nb = parseInt(b) || 999;
+        return na - nb;
+      });
+    return [
+      { value: "all", label: "All bedrooms" },
+      ...cats.map((c) => ({ value: c, label: bedroomDisplayLabel(c) })),
+    ];
+  }, [records]);
 
   // Filtered records for the current year + bedroom/property type filters
   const filtered = useMemo(() => {
@@ -86,6 +109,7 @@ export default function MapSection({ records, latestYear }: MapSectionProps) {
     <div className="flex flex-col gap-6">
       <FilterBar
         bedrooms={bedrooms}
+        bedroomOptions={bedroomOptions}
         propertyType={propertyType}
         county={county}
         counties={counties}
