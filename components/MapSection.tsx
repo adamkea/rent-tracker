@@ -12,11 +12,41 @@ interface MapSectionProps {
   latestYear: number;
 }
 
+const WORD_TO_NUM: Record<string, number> = {
+  one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8,
+};
+
+/** Numeric sort key for a raw CSO bedroom label. */
+function bedroomSortKey(category: string): number {
+  const digit = category.match(/^(\d+)\s+bedroom/i);
+  if (digit) return parseInt(digit[1]);
+  const word = category.match(/^(\w+)\s+bedroom/i);
+  if (word) return WORD_TO_NUM[word[1].toLowerCase()] ?? 999;
+  const range = category.match(/^(\d+)\s+to\s+(\d+)/i);
+  if (range) return (parseInt(range[1]) + parseInt(range[2])) / 2;
+  if (/or\s+more/i.test(category)) return 5;
+  return 999;
+}
+
 /** Convert a raw CSO bedroom label to a short display label. */
 function bedroomDisplayLabel(category: string): string {
-  const m = category.match(/^(\d+)\s+bedroom/i);
-  if (m) return `${m[1]} bed${Number(m[1]) !== 1 ? "s" : ""}`;
-  if (/5\s+or\s+more/i.test(category)) return "5+ beds";
+  // "2 bedrooms" / "1 bedroom"
+  const digit = category.match(/^(\d+)\s+bedroom/i);
+  if (digit) {
+    const n = parseInt(digit[1]);
+    return `${n} bed${n !== 1 ? "s" : ""}`;
+  }
+  // "Two bedrooms" / "One bedroom"
+  const word = category.match(/^(\w+)\s+bedroom/i);
+  if (word) {
+    const n = WORD_TO_NUM[word[1].toLowerCase()];
+    if (n !== undefined) return `${n} bed${n !== 1 ? "s" : ""}`;
+  }
+  // "1 to 2 bedrooms"
+  const range = category.match(/^(\d+)\s+to\s+(\d+)\s+bedroom/i);
+  if (range) return `${range[1]}-${range[2]} beds`;
+  // "5 or more bedrooms"
+  if (/or\s+more/i.test(category)) return "5+ beds";
   return category;
 }
 
@@ -30,11 +60,7 @@ export default function MapSection({ records, latestYear }: MapSectionProps) {
   const bedroomOptions = useMemo(() => {
     const cats = Array.from(new Set(records.map((r) => r.bedrooms)))
       .filter((b) => b !== "All")
-      .sort((a, b) => {
-        const na = parseInt(a) || 999;
-        const nb = parseInt(b) || 999;
-        return na - nb;
-      });
+      .sort((a, b) => bedroomSortKey(a) - bedroomSortKey(b));
     return [
       { value: "all", label: "All bedrooms" },
       ...cats.map((c) => ({ value: c, label: bedroomDisplayLabel(c) })),
