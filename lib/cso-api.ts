@@ -111,10 +111,30 @@ function parseJsonStat(data: any): RentRecord[] {
 
 export async function fetchRentData(): Promise<RentDataset> {
   const url = `${BASE_URL}/RIA02/JSON-stat/1.0/en`;
-  const res = await fetch(url, { next: { revalidate: 86400 } });
 
-  if (!res.ok) {
-    throw new Error(`CSO API error: ${res.status} ${res.statusText}`);
+  let res: Response | null = null;
+  let lastError: Error | null = null;
+
+  // Retry with exponential backoff — the CSO API occasionally returns 403/5xx
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      res = await fetch(url, {
+        next: { revalidate: 86400 },
+        headers: {
+          "User-Agent": "IrishRentTracker/1.0 (Next.js; +https://github.com/adamkea/rent-tracker)",
+          "Accept": "application/json",
+        },
+      });
+      if (res.ok) break;
+      lastError = new Error(`CSO API error: ${res.status} ${res.statusText}`);
+    } catch (e) {
+      lastError = e instanceof Error ? e : new Error(String(e));
+    }
+    if (attempt < 2) await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+  }
+
+  if (!res || !res.ok) {
+    throw lastError ?? new Error("CSO API request failed after retries");
   }
 
   const raw = await res.json();

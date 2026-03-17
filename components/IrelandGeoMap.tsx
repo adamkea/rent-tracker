@@ -54,6 +54,7 @@ export default function IrelandGeoMap({ allAreaData }: IrelandGeoMapProps) {
   const router = useRouter();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [geoFeatures, setGeoFeatures] = useState<any[]>([]);
+  const [geoError, setGeoError] = useState(false);
   const [tooltip, setTooltip] = useState<{
     name: string;
     rent: number | null;
@@ -62,9 +63,19 @@ export default function IrelandGeoMap({ allAreaData }: IrelandGeoMapProps) {
   } | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     fetch("/ireland-counties.geojson")
-      .then((r) => r.json())
-      .then((d) => setGeoFeatures(d.features));
+      .then((r) => {
+        if (!r.ok) throw new Error(`GeoJSON fetch failed: ${r.status}`);
+        return r.json();
+      })
+      .then((d) => {
+        if (!cancelled) setGeoFeatures(d.features);
+      })
+      .catch(() => {
+        if (!cancelled) setGeoError(true);
+      });
+    return () => { cancelled = true; };
   }, []);
 
   // Build markers: areas that have both rent data and known coordinates
@@ -95,9 +106,25 @@ export default function IrelandGeoMap({ allAreaData }: IrelandGeoMapProps) {
   // Ireland outline paths for clipPath + border
   const irelandPaths = geoFeatures.map((f) => pathGen(f) ?? "");
 
+  if (geoError) {
+    return (
+      <div className="w-full aspect-[5/5.8] bg-gray-50 dark:bg-gray-800 rounded-xl border border-dashed border-gray-300 dark:border-gray-700 flex items-center justify-center">
+        <p className="text-gray-400 text-sm">Could not load map data.</p>
+      </div>
+    );
+  }
+
+  if (geoFeatures.length === 0) {
+    return (
+      <div className="w-full aspect-[5/5.8] bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 flex items-center justify-center">
+        <p className="text-gray-400 text-sm animate-pulse">Loading map…</p>
+      </div>
+    );
+  }
+
   return (
     <div className="w-full flex flex-col gap-4">
-      <div className="relative w-full rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+      <div className="relative w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm overflow-hidden">
         {/* Tooltip */}
         {tooltip && (
           <div className="absolute top-3 left-3 z-10 bg-white border border-gray-200 rounded-lg px-3 py-2 shadow-md text-sm pointer-events-none">
