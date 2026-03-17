@@ -1,36 +1,60 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { geoMercator, geoPath } from "d3-geo";
-import { Delaunay } from "d3-delaunay";
+import type { Feature, Geometry, GeoJsonProperties } from "geojson";
 import { useRouter } from "next/navigation";
 import { slugify } from "@/lib/data-helpers";
-import { getAreaCoords } from "@/lib/area-coords";
 
-const WIDTH = 500;
-const HEIGHT = 580;
+const WIDTH = 600;
+const HEIGHT = 680;
 
-const projection = geoMercator()
-  .center([-8, 53.4])
-  .scale(3200)
-  .translate([WIDTH / 2, HEIGHT / 2]);
+type Coord = number[];
+type Ring = Coord[];
 
-const pathGen = geoPath(projection);
+/** Fix GeoJSON winding order — this file has clockwise rings which D3 interprets
+ *  as "entire globe minus the county". Reversing makes them counter-clockwise. */
+function rewindFeature(f: Feature<Geometry, GeoJsonProperties>): Feature<Geometry, GeoJsonProperties> {
+  const geom = f.geometry;
+  const rev = (ring: Ring): Ring => ring.slice().reverse();
+  if (geom.type === "Polygon") {
+    return { ...f, geometry: { ...geom, coordinates: geom.coordinates.map(rev) } };
+  } else if (geom.type === "MultiPolygon") {
+    return { ...f, geometry: { ...geom, coordinates: geom.coordinates.map((poly) => poly.map(rev)) } };
+  }
+  return f;
+}
 
-const COLOUR_SCALE = [
-  "#d1fae5",
-  "#6ee7b7",
-  "#34d399",
-  "#10b981",
-  "#059669",
-  "#047857",
-  "#065f46",
-];
+/** Map a GeoJSON county name to the canonical county name used in app data. */
+function geoNameToCounty(geoName: string): string {
+  const specials: Record<string, string> = {
+    "Dublin City": "Dublin",
+    "South Dublin": "Dublin",
+    Fingal: "Dublin",
+    "Dún Laoghaire-Rathdown": "Dublin",
+    "Galway City": "Galway",
+    "Galway County": "Galway",
+    "Limerick City": "Limerick",
+    "Limerick County": "Limerick",
+    "Waterford City": "Waterford",
+    "Waterford County": "Waterford",
+    "Cork City": "Cork",
+    "Cork County": "Cork",
+    "North Tipperary": "Tipperary",
+    "South Tipperary": "Tipperary",
+  };
+  if (specials[geoName]) return specials[geoName];
+  // Strip "County" suffix
+  return geoName.replace(/\s+County$/, "").trim();
+}
 
-function getRentColour(rent: number, min: number, max: number): string {
-  const ratio = max === min ? 0.5 : Math.min((rent - min) / (max - min), 1);
-  const idx = Math.floor(ratio * (COLOUR_SCALE.length - 1));
-  return COLOUR_SCALE[idx];
+const COLOUR_STEPS = ["#d1fae5", "#6ee7b7", "#34d399", "#10b981", "#059669", "#047857", "#065f46"];
+
+function rentColour(rent: number | null, min: number, max: number): string {
+  if (rent === null || max === min) return "#e5e7eb";
+  const ratio = Math.min((rent - min) / (max - min), 1);
+  const idx = Math.round(ratio * (COLOUR_STEPS.length - 1));
+  return COLOUR_STEPS[idx];
 }
 
 interface CountyRent {
@@ -38,155 +62,124 @@ interface CountyRent {
   averageRent: number | null;
 }
 
-interface AreaRent {
-  location: string;
-  averageRent: number | null;
-}
-
 interface IrelandGeoMapProps {
   data: CountyRent[];
   selectedCounty: string | null;
-  dublinAreaData?: AreaRent[] | null;
-  allAreaData?: AreaRent[] | null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  dublinAreaData?: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  allAreaData?: any;
 }
 
-export default function IrelandGeoMap({ allAreaData }: IrelandGeoMapProps) {
+export default function IrelandGeoMap({ data, selectedCounty }: IrelandGeoMapProps) {
   const router = useRouter();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [geoFeatures, setGeoFeatures] = useState<any[]>([]);
-  const [tooltip, setTooltip] = useState<{
-    name: string;
-    rent: number | null;
-    x: number;
-    y: number;
-  } | null>(null);
+  const [features, setFeatures] = useState<Feature<Geometry, GeoJsonProperties>[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [hovered, setHovered] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/ireland-counties.geojson")
-      .then((r) => r.json())
-      .then((d) => setGeoFeatures(d.features));
+      .then((r) => { if (!r.ok) throw new Error("failed"); return r.json(); })
+      .then((geo) => { setFeatures(geo.features.map(rewindFeature)); setLoading(false); })
+      .catch(() => { setError(true); setLoading(false); });
   }, []);
 
-  // Build markers: areas that have both rent data and known coordinates
-  const markers = (allAreaData ?? [])
-    .filter((a) => a.averageRent !== null)
-    .flatMap((a) => {
-      const coords = getAreaCoords(a.location);
-      if (!coords) return [];
-      const xy = projection(coords);
-      if (!xy) return [];
-      return [{ location: a.location, averageRent: a.averageRent as number, xy: xy as [number, number] }];
-    });
+  // Build lookup: county name → average rent
+  const rentMap = useMemo(() => {
+    const m = new Map<string, number | null>();
+    for (const d of data) m.set(d.county, d.averageRent);
+    return m;
+  }, [data]);
 
-  const rents = markers.map((m) => m.averageRent);
-  const min = rents.length ? Math.min(...rents) : 0;
-  const max = rents.length ? Math.max(...rents) : 1;
+  const rents = useMemo(
+    () => data.map((d) => d.averageRent).filter((r): r is number => r !== null),
+    [data],
+  );
+  const minRent = rents.length ? Math.min(...rents) : 0;
+  const maxRent = rents.length ? Math.max(...rents) : 1;
 
-  // Voronoi tessellation in screen space
-  const voronoiPaths: string[] = [];
-  if (markers.length >= 3) {
-    const delaunay = Delaunay.from(markers.map((m) => m.xy));
-    const voronoi = delaunay.voronoi([0, 0, WIDTH, HEIGHT]);
-    for (let i = 0; i < markers.length; i++) {
-      voronoiPaths.push(voronoi.renderCell(i));
-    }
-  }
+  // Compute projection AFTER features are loaded so fitSize works correctly
+  const { pathFn, projectionReady } = useMemo(() => {
+    if (features.length === 0) return { pathFn: null, projectionReady: false };
+    const collection = { type: "FeatureCollection" as const, features };
+    const proj = geoMercator().fitSize([WIDTH, HEIGHT], collection);
+    return { pathFn: geoPath(proj), projectionReady: true };
+  }, [features]);
 
-  // Ireland outline paths for clipPath + border
-  const irelandPaths = geoFeatures.map((f) => pathGen(f) ?? "");
+  const hoveredCounty = hovered ? geoNameToCounty(hovered) : null;
+  const hoveredRent = hoveredCounty ? (rentMap.get(hoveredCounty) ?? null) : null;
 
   return (
     <div className="w-full flex flex-col gap-4">
-      <div className="relative w-full rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
-        {/* Tooltip */}
-        {tooltip && (
-          <div className="absolute top-3 left-3 z-10 bg-white border border-gray-200 rounded-lg px-3 py-2 shadow-md text-sm pointer-events-none">
-            <p className="font-semibold text-gray-800">{tooltip.name}</p>
-            <p className="text-gray-500">
-              {tooltip.rent
-                ? `€${tooltip.rent.toLocaleString("en-IE")}/mo avg`
-                : "No data"}
-            </p>
-            <p className="text-emerald-600 text-xs mt-0.5">Click for yearly trends →</p>
+      {/* Map container */}
+      <div className="relative w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm overflow-hidden"
+           style={{ aspectRatio: `${WIDTH}/${HEIGHT}` }}>
+
+        {(loading || error) && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            {error
+              ? <p className="text-sm text-gray-400">Could not load map data.</p>
+              : <p className="text-sm text-gray-400 animate-pulse">Loading map…</p>
+            }
           </div>
         )}
 
-        <svg
-          viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
-          style={{ width: "100%", height: "auto", display: "block" }}
-        >
-          <defs>
-            {/* Clip Voronoi cells to Ireland's outline */}
-            <clipPath id="ireland-clip">
-              {irelandPaths.map((d, i) => (
-                <path key={i} d={d} />
-              ))}
-            </clipPath>
-          </defs>
+        {/* Hover tooltip */}
+        {hovered && (
+          <div className="absolute top-3 left-3 z-10 pointer-events-none bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-md px-3 py-2 text-sm">
+            <p className="font-semibold text-gray-800 dark:text-gray-100">{hovered}</p>
+            <p className="text-gray-500 dark:text-gray-400">
+              {hoveredRent
+                ? `€${hoveredRent.toLocaleString("en-IE")} / month`
+                : "No data"}
+            </p>
+            <p className="text-xs text-emerald-600 mt-0.5">Click to explore →</p>
+          </div>
+        )}
 
-          {/* Voronoi zones clipped to Ireland */}
-          <g clipPath="url(#ireland-clip)">
-            {markers.map((m, i) => (
-              <path
-                key={m.location}
-                d={voronoiPaths[i] ?? ""}
-                fill={getRentColour(m.averageRent, min, max)}
-                stroke="#ffffff"
-                strokeWidth={0.8}
-                style={{ cursor: "pointer" }}
-                onClick={() => router.push(`/area/${slugify(m.location)}`)}
-                onMouseEnter={() =>
-                  setTooltip({ name: m.location, rent: m.averageRent, x: m.xy[0], y: m.xy[1] })
-                }
-                onMouseLeave={() => setTooltip(null)}
-              />
-            ))}
-          </g>
+        {projectionReady && pathFn && (
+          <svg
+            viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+            style={{ width: "100%", height: "100%", display: "block" }}
+          >
+            {features.map((f, i) => {
+              const geoName: string = f.properties?.name ?? "";
+              const county = geoNameToCounty(geoName);
+              const rent = rentMap.get(county) ?? null;
+              const isSelected = selectedCounty ? county === selectedCounty : false;
+              const isHovered = hovered === geoName;
+              const d = pathFn(f) ?? "";
 
-          {/* Ireland county borders (outline only, on top for context) */}
-          <g pointerEvents="none">
-            {irelandPaths.map((d, i) => (
-              <path
-                key={i}
-                d={d}
-                fill="none"
-                stroke="#ffffff"
-                strokeWidth={1}
-                opacity={0.4}
-              />
-            ))}
-          </g>
-
-          {/* Small dot at each area centre for orientation */}
-          <g pointerEvents="none">
-            {markers.map((m) => (
-              <circle
-                key={m.location}
-                cx={m.xy[0]}
-                cy={m.xy[1]}
-                r={2}
-                fill="#ffffff"
-                opacity={0.6}
-              />
-            ))}
-          </g>
-        </svg>
+              return (
+                <path
+                  key={i}
+                  d={d}
+                  fill={rentColour(rent, minRent, maxRent)}
+                  stroke="#ffffff"
+                  strokeWidth={isSelected || isHovered ? 2 : 0.7}
+                  opacity={selectedCounty && !isSelected ? 0.4 : 1}
+                  style={{ cursor: "pointer", transition: "opacity 0.15s" }}
+                  onClick={() => router.push(`/county/${slugify(county)}`)}
+                  onMouseEnter={() => setHovered(geoName)}
+                  onMouseLeave={() => setHovered(null)}
+                />
+              );
+            })}
+          </svg>
+        )}
       </div>
 
-      {/* Colour legend */}
-      <div className="flex items-center gap-2 text-xs text-gray-500">
+      {/* Legend */}
+      <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
         <span>Lower rent</span>
         <div className="flex flex-1 h-2 rounded-full overflow-hidden">
-          {COLOUR_SCALE.map((c) => (
+          {COLOUR_STEPS.map((c) => (
             <div key={c} className="flex-1" style={{ backgroundColor: c }} />
           ))}
         </div>
         <span>Higher rent</span>
       </div>
-
-      <p className="text-xs text-gray-400 text-center">
-        Each zone is a rental area. Click any zone for yearly trends.
-      </p>
     </div>
   );
 }
