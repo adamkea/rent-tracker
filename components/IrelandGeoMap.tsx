@@ -54,6 +54,8 @@ export default function IrelandGeoMap({ allAreaData }: IrelandGeoMapProps) {
   const router = useRouter();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [geoFeatures, setGeoFeatures] = useState<any[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [outlineFeature, setOutlineFeature] = useState<any>(null);
   const [geoError, setGeoError] = useState(false);
   const [tooltip, setTooltip] = useState<{
     name: string;
@@ -63,12 +65,15 @@ export default function IrelandGeoMap({ allAreaData }: IrelandGeoMapProps) {
   } | null>(null);
 
   useEffect(() => {
-    fetch("/ireland-counties.geojson")
-      .then((r) => {
-        if (!r.ok) throw new Error(`GeoJSON fetch failed: ${r.status}`);
-        return r.json();
+    // Fetch county borders (for rendering county lines) and dissolved outline (for clip path)
+    Promise.all([
+      fetch("/ireland-counties.geojson").then((r) => { if (!r.ok) throw new Error(); return r.json(); }),
+      fetch("/ireland-outline.geojson").then((r) => { if (!r.ok) throw new Error(); return r.json(); }),
+    ])
+      .then(([counties, outline]) => {
+        setGeoFeatures(counties.features);
+        setOutlineFeature(outline.features[0]);
       })
-      .then((d) => setGeoFeatures(d.features))
       .catch(() => setGeoError(true));
   }, []);
 
@@ -108,10 +113,16 @@ export default function IrelandGeoMap({ allAreaData }: IrelandGeoMapProps) {
     return paths;
   }, [markers]);
 
-  // Ireland outline paths for clipPath + border — only recomputes when GeoJSON loads
+  // County border paths for rendering — only recomputes when GeoJSON loads
   const irelandPaths = useMemo(
     () => geoFeatures.map((f) => pathGen(f) ?? ""),
     [geoFeatures]
+  );
+
+  // Single dissolved Ireland outline for the SVG clip path
+  const clipPath = useMemo(
+    () => (outlineFeature ? (pathGen(outlineFeature) ?? "") : ""),
+    [outlineFeature]
   );
 
   const geoReady = geoFeatures.length > 0;
@@ -148,9 +159,7 @@ export default function IrelandGeoMap({ allAreaData }: IrelandGeoMapProps) {
           <defs>
             {/* Clip Voronoi cells to Ireland's outline */}
             <clipPath id="ireland-clip">
-              {irelandPaths.map((d, i) => (
-                <path key={i} d={d} />
-              ))}
+              <path d={clipPath} fillRule="evenodd" />
             </clipPath>
           </defs>
 
