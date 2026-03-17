@@ -8,6 +8,21 @@ import { slugify } from "@/lib/data-helpers";
 const WIDTH = 600;
 const HEIGHT = 680;
 
+/** Fix GeoJSON winding order — this file has clockwise rings which D3 interprets
+ *  as "entire globe minus the county". Reversing makes them counter-clockwise. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function rewindFeature(f: any): any {
+  const geom = f.geometry;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rev = (ring: any[]) => ring.slice().reverse();
+  if (geom.type === "Polygon") {
+    return { ...f, geometry: { ...geom, coordinates: geom.coordinates.map(rev) } };
+  } else if (geom.type === "MultiPolygon") {
+    return { ...f, geometry: { ...geom, coordinates: geom.coordinates.map((poly: any[]) => poly.map(rev)) } };
+  }
+  return f;
+}
+
 /** Map a GeoJSON county name to the canonical county name used in app data. */
 function geoNameToCounty(geoName: string): string {
   const specials: Record<string, string> = {
@@ -65,7 +80,7 @@ export default function IrelandGeoMap({ data, selectedCounty }: IrelandGeoMapPro
   useEffect(() => {
     fetch("/ireland-counties.geojson")
       .then((r) => { if (!r.ok) throw new Error("failed"); return r.json(); })
-      .then((geo) => { setFeatures(geo.features); setLoading(false); })
+      .then((geo) => { setFeatures(geo.features.map(rewindFeature)); setLoading(false); })
       .catch(() => { setError(true); setLoading(false); });
   }, []);
 
